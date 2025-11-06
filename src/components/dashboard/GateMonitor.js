@@ -2,6 +2,10 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { io } from "socket.io-client";
 
+// API Configuration
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://127.0.0.1:5000";
+const WEBSOCKET_URL = process.env.REACT_APP_WEBSOCKET_URL || "http://127.0.0.1:5000";
+
 const GateMonitor = () => {
   const [gateData, setGateData] = useState(null);
   const [cattleRegistry, setCattleRegistry] = useState({});
@@ -10,14 +14,13 @@ const GateMonitor = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [connected, setConnected] = useState(false);
-  const [selectedCattle, setSelectedCattle] = useState(null);
 
   useEffect(() => {
     // Fetch initial gate data
     const fetchGateData = async () => {
       try {
         setLoading(true);
-        const response = await axios.get("http://127.0.0.1:5000/api/gate");
+        const response = await axios.get(`${API_BASE_URL}/api/gate`);
         
         if (response.data.status === "success") {
           setGateData(response.data.latest_data);
@@ -36,7 +39,7 @@ const GateMonitor = () => {
     };
 
     // Initialize WebSocket connection for real-time updates
-    const socket = io("http://127.0.0.1:5000", {
+    const socket = io(WEBSOCKET_URL, {
       transports: ['websocket'],
       reconnection: true,
       reconnectionAttempts: 5
@@ -321,7 +324,6 @@ const GateMonitor = () => {
                     <div className="text-right">
                       <p className="text-sm font-medium text-blue-600">{cattleInfo.total_entries} entries</p>
                       <button 
-                        onClick={() => setSelectedCattle(cattleInfo)}
                         className="text-xs text-primary hover:underline"
                       >
                         View Details

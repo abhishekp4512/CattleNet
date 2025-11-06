@@ -9,6 +9,10 @@ import TemperatureCard from "./components/dashboard/TemperatureCard";
 import EnvironmentalMonitor from "./EnvironmentalMonitor";
 import GateMonitor from "./components/dashboard/GateMonitor";
 
+// API Configuration
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://127.0.0.1:5000";
+const WEBSOCKET_URL = process.env.REACT_APP_WEBSOCKET_URL || "http://127.0.0.1:5000";
+
 function App() {
   const [sensorData, setSensorData] = useState([]);
   const [latestData, setLatestData] = useState(null);
@@ -42,7 +46,7 @@ function App() {
       try {
         setLoading(true);
         // Fetch sensor data
-        const dataResponse = await axios.get("http://127.0.0.1:5000/api/data");
+        const dataResponse = await axios.get(`${API_BASE_URL}/api/data`);
         
         if (dataResponse.data.status === "success") {
           setSensorData(dataResponse.data.data.reverse()); // Most recent data first
@@ -56,7 +60,7 @@ function App() {
         }
         
         // Fetch prediction
-        const predictionResponse = await axios.get("http://127.0.0.1:5000/api/predict");
+        const predictionResponse = await axios.get(`${API_BASE_URL}/api/predict`);
         if (predictionResponse.data.status === "success") {
           setPrediction(predictionResponse.data.prediction);
           setConfidence(predictionResponse.data.confidence);
@@ -66,7 +70,7 @@ function App() {
         }
         
         // Fetch health statistics
-        const statsResponse = await axios.get("http://127.0.0.1:5000/api/health-stats");
+        const statsResponse = await axios.get(`${API_BASE_URL}/api/health-stats`);
         if (statsResponse.data.status === "success") {
           setHealthStats(statsResponse.data.health_stats);
         }
@@ -79,7 +83,7 @@ function App() {
     };
 
     // Initialize WebSocket connection
-    socketRef.current = io("http://127.0.0.1:5000", {
+    socketRef.current = io(WEBSOCKET_URL, {
       transports: ['websocket'],
       reconnection: true,
       reconnectionAttempts: 5
@@ -123,7 +127,7 @@ function App() {
       // Refresh health stats periodically
       const fetchHealthStats = async () => {
         try {
-          const statsResponse = await axios.get("http://127.0.0.1:5000/api/health-stats");
+          const statsResponse = await axios.get(`${API_BASE_URL}/api/health-stats`);
           if (statsResponse.data.status === "success") {
             setHealthStats(statsResponse.data.health_stats);
           }
@@ -193,7 +197,7 @@ function App() {
   const testCattleData = async () => {
     try {
       // Make a POST request to test the data
-      const response = await axios.post('http://127.0.0.1:5000/api/test-data', testData);
+      const response = await axios.post(`${API_BASE_URL}/api/test-data`, testData);
       
       if (response.data.status === 'success') {
         setTestResult(response.data);

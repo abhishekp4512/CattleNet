@@ -10,14 +10,33 @@ import threading
 import random
 import json
 from collections import deque
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
-socketio = SocketIO(app, cors_allowed_origins="*")  # Enable SocketIO with CORS
+
+# Configure CORS for production
+cors_origins = os.getenv('CORS_ORIGINS', '*')
+if cors_origins == '*':
+    CORS(app)
+else:
+    CORS(app, origins=cors_origins.split(','))
+
+# Configure SocketIO for production
+socketio = SocketIO(app, 
+                   cors_allowed_origins=cors_origins,
+                   async_mode='eventlet',
+                   logger=False,
+                   engineio_logger=False)
 
 # MQTT Configuration
-MQTT_BROKER = "broker.emqx.io"  # Public EMQX broker
-MQTT_PORT = 1883
+MQTT_BROKER = os.getenv('MQTT_BROKER', "broker.emqx.io")
+MQTT_PORT = int(os.getenv('MQTT_PORT', 1883))
+MQTT_USERNAME = os.getenv('MQTT_USERNAME', '')
+MQTT_PASSWORD = os.getenv('MQTT_PASSWORD', '')
+
 MQTT_TOPICS = {
     "cattle_data": "farm/sensor1",           # Specific topic for farm sensor data
     "cattle_sensors": "farm/+",             # Topic pattern for multiple farm sensors
@@ -382,8 +401,12 @@ def process_gate_data(data, topic):
     except Exception as e:
         print(f"Error processing gate data: {str(e)}")
 
-# Initialize MQTT Client
+# Initialize MQTT Client with authentication if provided
 mqtt_client = mqtt.Client()
+
+if MQTT_USERNAME and MQTT_PASSWORD:
+    mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+
 mqtt_client.on_connect = on_connect
 mqtt_client.on_disconnect = on_disconnect
 mqtt_client.on_message = on_message
@@ -457,6 +480,33 @@ def generate_simulated_data():
         except Exception as e:
             print(f"Error in simulated data generation: {str(e)}")
             time.sleep(5)
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint for monitoring services"""
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.now().isoformat(),
+        'mqtt_connected': mqtt_connected,
+        'version': '1.0.0',
+        'service': 'CattleNet Smartfarm Backend'
+    })
+
+@app.route('/', methods=['GET'])
+def home():
+    """Root endpoint"""
+    return jsonify({
+        'message': 'CattleNet Smartfarm Backend API',
+        'version': '1.0.0',
+        'status': 'running',
+        'endpoints': {
+            'health': '/health',
+            'data': '/api/data',
+            'gate': '/api/gate',
+            'environment': '/api/environment',
+            'mqtt_status': '/api/mqtt-status'
+        }
+    })
 
 # Flask API Routes
 @app.route('/api/data', methods=['GET'])
@@ -1054,12 +1104,21 @@ if __name__ == '__main__':
         mqtt_thread = threading.Thread(target=start_mqtt_client, daemon=True)
         mqtt_thread.start()
         
-        print("Starting Flask server on http://127.0.0.1:5000")
+        # Get configuration from environment
+        host = os.getenv('HOST', '127.0.0.1')
+        port = int(os.getenv('PORT', 5000))
+        debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
+        
+        print(f"Starting CattleNet Smartfarm Backend on {host}:{port}")
         print("MQTT Integration enabled")
         print("Press Ctrl+C to quit")
         
         # Run the SocketIO server
-        socketio.run(app, debug=True, host='127.0.0.1', port=5000, allow_unsafe_werkzeug=True)
+        socketio.run(app, 
+                    debug=debug, 
+                    host=host, 
+                    port=port, 
+                    allow_unsafe_werkzeug=True)
     except Exception as e:
         print(f"Error starting server: {str(e)}")
         import traceback
