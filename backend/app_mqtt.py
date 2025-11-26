@@ -10,17 +10,24 @@ import threading
 import random
 import json
 from collections import deque
+from db_client import MongoDBClient
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 socketio = SocketIO(app, cors_allowed_origins="*")  # Enable SocketIO with CORS
 
+# Initialize MongoDB client
+mongodb = MongoDBClient()
+mongodb.connect()
+
 # MQTT Configuration
 MQTT_BROKER = "localhost"  # Change this to your MQTT broker address
 MQTT_PORT = 1883
 MQTT_TOPICS = {
-    "cattle_data": "cattle/sensors/+/data",  # Topic pattern for cattle sensor data
-    "cattle_health": "cattle/health/+",      # Topic pattern for health data
+    "sensor_data": "farm/sensor1",
+    "feed_monitor": "farm/feed_monitor",
+    "gate": "farm/gate",
+    "environment": "farm/environment"
 }
 
 # Data storage (in-memory for now)
@@ -147,11 +154,17 @@ def on_message(client, userdata, msg):
             print(f"Failed to parse JSON payload: {payload}")
             return
         
-        # Process cattle sensor data
-        if "sensors" in topic:
+        # Route based on topic
+        if topic == "farm/sensor1":
             process_sensor_data(data, topic)
-        elif "health" in topic:
-            process_health_data(data, topic)
+        elif topic == "farm/feed_monitor":
+            process_feed_monitor_data(data, topic)
+        elif topic == "farm/gate":
+            process_gate_data(data, topic)
+        elif topic == "farm/environment":
+            process_environmental_data(data, topic)
+        else:
+            print(f"Unknown topic: {topic}")
             
     except Exception as e:
         print(f"Error processing MQTT message: {str(e)}")
@@ -192,6 +205,12 @@ def process_sensor_data(data, topic):
         cattle_data_buffer.append(sensor_data)
         latest_data = sensor_data.copy()
         
+        # Save to MongoDB
+        if mongodb.connected:
+            sensor_data['timestamp'] = datetime.now()  # Use datetime object for MongoDB
+            mongodb.insert_sensor_data(sensor_data)
+            print(f"✓ Saved sensor data to MongoDB for {cattle_id}")
+        
         # Perform anomaly detection
         features = [
             sensor_data['acc_x'], sensor_data['acc_y'], sensor_data['acc_z'],
@@ -227,6 +246,78 @@ def process_health_data(data, topic):
         
     except Exception as e:
         print(f"Error processing health data: {str(e)}")
+
+def process_feed_monitor_data(data, topic):
+    """Process feed monitor data received from MQTT"""
+    try:
+        timestamp = data.get('timestamp', datetime.now().isoformat())
+        
+        # Create feed monitor data structure
+        feed_data = {
+            'timestamp': datetime.now(),
+            'cattle_id': data.get('cattle_id', 'unknown'),
+            'rfid_tag': data.get('rfid_tag', ''),
+            'feed_consumed': float(data.get('feed_consumed', 0)),
+            'water_consumed': float(data.get('water_consumed', 0)),
+            'duration': float(data.get('duration', 0)),
+        }
+        
+        # Save to MongoDB
+        if mongodb.connected:
+            mongodb.insert_feed_monitor_data(feed_data)
+            print(f"✓ Saved feed monitor data to MongoDB")
+        
+        # Emit real-time update via WebSocket
+        socketio.emit('feed_monitor_update', feed_data)
+        
+    except Exception as e:
+        print(f"Error processing feed monitor data: {str(e)}")
+
+def process_gate_data(data, topic):
+    """Process gate/RFID data received from MQTT"""
+    try:
+        gate_data = {
+            'timestamp': datetime.now(),
+            'cattle_id': data.get('cattle_id', 'unknown'),
+            'rfid_tag': data.get('rfid_tag', ''),
+            'gate_status': data.get('gate_status', 'unknown'),
+            'weight': float(data.get('weight', 0)) if 'weight' in data else None,
+            'direction': data.get('direction', 'unknown'),
+        }
+        
+        # Save to MongoDB
+        if mongodb.connected:
+            mongodb.insert_gate_data(gate_data)
+            print(f"✓ Saved gate data to MongoDB")
+        
+        # Emit real-time update via WebSocket
+        socketio.emit('gate_update', gate_data)
+        
+    except Exception as e:
+        print(f"Error processing gate data: {str(e)}")
+
+def process_environmental_data(data, topic):
+    """Process environmental data received from MQTT"""
+    try:
+        env_data = {
+            'timestamp': datetime.now(),
+            'zone': data.get('zone', 'main'),
+            'temperature': float(data.get('temperature', 0)) if 'temperature' in data else None,
+            'humidity': float(data.get('humidity', 0)) if 'humidity' in data else None,
+            'light_level': float(data.get('light_level', 0)) if 'light_level' in data else None,
+            'presence': data.get('presence', False),
+        }
+        
+        # Save to MongoDB
+        if mongodb.connected:
+            mongodb.insert_environmental_data(env_data)
+            print(f"✓ Saved environmental data to MongoDB")
+        
+        # Emit real-time update via WebSocket
+        socketio.emit('environmental_update', env_data)
+        
+    except Exception as e:
+        print(f"Error processing environmental data: {str(e)}")
 
 # Initialize MQTT Client
 mqtt_client = mqtt.Client()

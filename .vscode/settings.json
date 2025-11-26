@@ -1,12 +1,24 @@
 {
-  "css.validate": false,
-  "less.validate": false,
-  "scss.validate": false,
+  // Treat regular .css files as PostCSS so Tailwind directives are recognized
+  "files.associations": {
+    "*.css": "postcss"
+  },
+
+  // Let the Tailwind extension (if installed) know which languages to operate on
   "tailwindCSS.includeLanguages": {
+    "postcss": "css",
     "javascript": "javascript",
+    "javascriptreact": "html",
+    "typescriptreact": "html",
     "html": "html"
   },
-  "tailwindCSS.experimental.classRegex": [
-    "className\\s*=\\s*[\"']([^\"']*)[\"']"
-  ]
+
+  // Disable the built-in CSS linter's unknown at-rule error for Tailwind's @tailwind/@apply
+  "css.lint.unknownAtRules": "ignore",
+  "scss.lint.unknownAtRules": "ignore",
+
+  // Optional: enable quick suggestions inside strings (helps when editing class lists)
+  "editor.quickSuggestions": {
+    "strings": true
+  }
 }

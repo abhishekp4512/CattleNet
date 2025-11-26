@@ -4,6 +4,7 @@ from flask_socketio import SocketIO, emit
 import paho.mqtt.client as mqtt
 import numpy as np
 from datetime import datetime
+from pytz import timezone
 import os
 import time
 import threading
@@ -11,6 +12,16 @@ import random
 import json
 from collections import deque
 from dotenv import load_dotenv
+
+# Import MongoDB models and client
+from db_client import mongodb
+from db_models import (
+    SensorDataModel,
+    EnvironmentalDataModel,
+    GateDataModel,
+    FeedMonitorModel,
+    HealthDataModel
+)
 
 # Load environment variables
 load_dotenv()
@@ -25,9 +36,12 @@ else:
     CORS(app, origins=cors_origins.split(','))
 
 # Configure SocketIO for production
-socketio = SocketIO(app, 
+# Use 'threading' async mode to avoid importing eventlet's green SSL wrapper which can
+# raise an AttributeError on newer Python versions where ssl.wrap_socket is removed.
+# For production you can switch back to 'eventlet' or 'gevent' after ensuring compatibility.
+socketio = SocketIO(app,
                    cors_allowed_origins=cors_origins,
-                   async_mode='eventlet',
+                   async_mode='threading',
                    logger=False,
                    engineio_logger=False)
 
@@ -43,6 +57,7 @@ MQTT_TOPICS = {
     "cattle_health": "cattle/health/+",     # Topic pattern for health data
     "environment": "farm/environment",       # Environmental data (LDR, DHT11, presence)
     "gate": "farm/gate",                    # Gate data (RFID + load cell)
+    "feed_monitor": "farm/feed_monitor",    # Feed and water consumption data
 }
 
 # Data storage (in-memory for now)
@@ -50,10 +65,22 @@ MQTT_TOPICS = {
 cattle_data_buffer = deque(maxlen=100)  # Store last 100 readings
 environmental_data_buffer = deque(maxlen=50)  # Store last 50 environmental readings
 gate_data_buffer = deque(maxlen=200)  # Store last 200 gate readings
+feed_monitor_buffer = deque(maxlen=100)  # Store last 100 feed monitor readings
 latest_data = {}
 latest_environmental_data = {}
 latest_gate_data = {}
 cattle_registry = {}  # Maps RFID tags to cattle information
+
+# Track unique RFID tags for IN (5 AM - 4 PM) and OUT (4 PM - 5 AM) periods
+unique_rfid_in = set()  # Unique RFIDs for entries (morning: 5 AM - 4 PM)
+unique_rfid_out = set()  # Unique RFIDs for exits (evening: 4 PM - 5 AM)
+last_date_in = None  # Track date for IN period
+last_date_out = None  # Track date for OUT period
+
+# Deduplication: Track recently processed MQTT messages to prevent duplicates
+processed_messages = set()  # Store (topic, timestamp, cattle_id) tuples to detect duplicates
+MAX_MESSAGE_HISTORY = 500  # Keep track of last N messages
+
 mqtt_connected = False
 
 # Rule-based detection parameters
@@ -142,9 +169,9 @@ def on_connect(client, userdata, flags, rc):
         mqtt_connected = True
         print(f"Connected to MQTT broker with result code {rc}")
         
-        # Subscribe to cattle data topics
+        # Subscribe to cattle data topics with QoS 1
         for topic_name, topic_pattern in MQTT_TOPICS.items():
-            client.subscribe(topic_pattern)
+            client.subscribe(topic_pattern, qos=1)
             print(f"Subscribed to {topic_name}: {topic_pattern}")
     else:
         mqtt_connected = False
@@ -179,6 +206,8 @@ def on_message(client, userdata, msg):
             process_environmental_data(data, topic)
         elif topic == "farm/gate":
             process_gate_data(data, topic)
+        elif topic == "farm/feed_monitor":
+            process_feed_monitor_data(data, topic)
         elif "farm/" in topic or "sensors" in topic:
             process_sensor_data(data, topic)
         elif "health" in topic:
@@ -216,15 +245,22 @@ def process_sensor_data(data, topic):
             formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         # Extract sensor values with defaults (support multiple formats)
+        acc_x = float(data.get('acc_x', data.get('ax', data.get('accelerometer', {}).get('x', 0))))
+        acc_y = float(data.get('acc_y', data.get('ay', data.get('accelerometer', {}).get('y', 0))))
+        acc_z = float(data.get('acc_z', data.get('az', data.get('accelerometer', {}).get('z', 0))))
+        gyro_x = float(data.get('gyro_x', data.get('gx', data.get('gyroscope', {}).get('x', 0))))
+        gyro_y = float(data.get('gyro_y', data.get('gy', data.get('gyroscope', {}).get('y', 0))))
+        gyro_z = float(data.get('gyro_z', data.get('gz', data.get('gyroscope', {}).get('z', 0))))
+        
         sensor_data = {
             'timestamp': formatted_time,
             'cattle_id': cattle_id,
-            'acc_x': float(data.get('acc_x', data.get('ax', data.get('accelerometer', {}).get('x', 0)))),
-            'acc_y': float(data.get('acc_y', data.get('ay', data.get('accelerometer', {}).get('y', 0)))),
-            'acc_z': float(data.get('acc_z', data.get('az', data.get('accelerometer', {}).get('z', 0)))),
-            'gyro_x': float(data.get('gyro_x', data.get('gx', data.get('gyroscope', {}).get('x', 0)))),
-            'gyro_y': float(data.get('gyro_y', data.get('gy', data.get('gyroscope', {}).get('y', 0)))),
-            'gyro_z': float(data.get('gyro_z', data.get('gz', data.get('gyroscope', {}).get('z', 0)))),
+            'acc_x': acc_x,
+            'acc_y': acc_y,
+            'acc_z': acc_z,
+            'gyro_x': gyro_x,
+            'gyro_y': gyro_y,
+            'gyro_z': gyro_z,
             'temperature': float(data.get('temperature', data.get('temp', data.get('t', 0)))),
         }
         
@@ -232,11 +268,24 @@ def process_sensor_data(data, topic):
         cattle_data_buffer.append(sensor_data)
         latest_data = sensor_data.copy()
         
+        # Save to MongoDB
+        if mongodb.connected:
+            db_doc = SensorDataModel.create(
+                cattle_id=cattle_id,
+                acc_x=acc_x,
+                acc_y=acc_y,
+                acc_z=acc_z,
+                gyro_x=gyro_x,
+                gyro_y=gyro_y,
+                gyro_z=gyro_z,
+                topic=topic
+            )
+            doc_id = mongodb.insert_sensor_data(db_doc)
+            if doc_id:
+                sensor_data['_id'] = doc_id
+        
         # Perform anomaly detection
-        features = [
-            sensor_data['acc_x'], sensor_data['acc_y'], sensor_data['acc_z'],
-            sensor_data['gyro_x'], sensor_data['gyro_y'], sensor_data['gyro_z']
-        ]
+        features = [acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z]
         
         result = detect_anomaly(features)
         
@@ -314,6 +363,22 @@ def process_environmental_data(data, topic):
         environmental_data_buffer.append(environmental_data)
         latest_environmental_data = environmental_data.copy()
         
+        # Save to MongoDB
+        if mongodb.connected:
+            zone = data.get('zone', 'unknown')
+            db_doc = EnvironmentalDataModel.create(
+                zone=zone,
+                temperature=environmental_data['env_temperature'],
+                humidity=environmental_data['humidity'],
+                water_level=data.get('water_level', None),
+                ph=data.get('ph', None),
+                pump_status=data.get('pump_status', None),
+                topic=topic
+            )
+            doc_id = mongodb.insert_environmental_data(db_doc)
+            if doc_id:
+                environmental_data['_id'] = doc_id
+        
         # Emit real-time environmental update via WebSocket
         socketio.emit('environmental_update', {
             'data': environmental_data,
@@ -325,11 +390,137 @@ def process_environmental_data(data, topic):
     except Exception as e:
         print(f"Error processing environmental data: {str(e)}")
 
-def process_gate_data(data, topic):
-    """Process gate data (RFID + weight) received from MQTT"""
-    global latest_gate_data, cattle_registry
+def process_feed_monitor_data(data, topic):
+    """Process feed monitor data received from MQTT"""
+    global latest_feed_data, processed_messages
     
     try:
+        # Extract cattle ID and timestamp for deduplication
+        cattle_id = data.get('cattleID', data.get('cattle_id', 'unknown'))
+        timestamp = data.get('timestamp', datetime.now().isoformat())
+        
+        # SKIP if no cattle detected (empty/idle message)
+        if not cattle_id or cattle_id.lower() in ['unknown', 'no cattle', 'none', '']:
+            return
+        
+        # DEDUPLICATION: Check if we've already processed this exact message
+        message_key = (topic, timestamp, cattle_id)
+        if message_key in processed_messages:
+            # Duplicate message - skip processing
+            return
+        
+        # Add to processed messages set
+        processed_messages.add(message_key)
+        
+        # Trim processed messages if too many stored
+        if len(processed_messages) > MAX_MESSAGE_HISTORY:
+            # Keep only recent messages
+            processed_messages.clear()
+            processed_messages.add(message_key)
+        
+        formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Handle different MQTT payload formats
+        # Format 1: Single cattle entry with cattleID and feedConsumed
+        if 'cattleID' in data or 'cattle_id' in data:
+            feed_consumed = float(data.get('feedConsumed', data.get('feed_consumed', 0)))
+            water_status = data.get('waterStatus', data.get('water_present', False))
+            
+            # SKIP if no actual feed consumption (idle/no-cattle message)
+            if feed_consumed <= 0:
+                return
+            
+            # Create activity entry with cattle identification
+            activity = {
+                'cattle_id': cattle_id,
+                'rfid': cattle_id,
+                'feed_consumed': feed_consumed,
+                'water_present': bool(water_status),
+                'timestamp': formatted_time
+            }
+            
+            # Build standardized feed data
+            feed_data = {
+                'timestamp': formatted_time,
+                'total_feed': feed_consumed,  # For single cattle entry
+                'total_water': 0.0,
+                'avg_feed_per_cattle': feed_consumed,
+                'avg_water_per_cattle': 0.0,
+                'recent_activity': [activity]
+            }
+        
+        # Format 2: Aggregated format with total_feed, recent_activity array
+        elif 'total_feed' in data or 'recent_activity' in data:
+            recent_activities = data.get('recent_activity', [])
+            
+            # Normalize activity entries
+            normalized_activities = []
+            for act in recent_activities:
+                normalized_activities.append({
+                    'cattle_id': act.get('cattle_id', act.get('rfid', act.get('rfid_tag', 'unknown'))),
+                    'rfid': act.get('rfid', act.get('rfid_tag', act.get('cattle_id', 'unknown'))),
+                    'feed_consumed': float(act.get('feed_consumed', 0)),
+                    'water_present': bool(act.get('water_present', False)),
+                    'timestamp': formatted_time
+                })
+            
+            feed_data = {
+                'timestamp': formatted_time,
+                'total_feed': float(data.get('total_feed', 0)),
+                'total_water': float(data.get('total_water', 0)),
+                'avg_feed_per_cattle': float(data.get('avg_feed_per_cattle', 0)),
+                'avg_water_per_cattle': float(data.get('avg_water_per_cattle', 0)),
+                'recent_activity': normalized_activities
+            }
+        else:
+            # Unknown format, skip
+            return
+        
+        # Add to buffer and update latest
+        feed_monitor_buffer.append(feed_data)
+        latest_feed_data = feed_data.copy()
+        
+        # Save individual cattle feed entries to MongoDB
+        if mongodb.connected:
+            for activity in feed_data.get('recent_activity', []):
+                db_doc = FeedMonitorModel.create(
+                    cattle_id=activity.get('cattle_id', 'unknown'),
+                    rfid_tag=activity.get('rfid', None),
+                    feed_consumed=float(activity.get('feed_consumed', 0)),
+                    water_present=activity.get('water_present', False),
+                    water_consumed=None,
+                    feed_before=None,
+                    feed_after=None,
+                    topic=topic
+                )
+                mongodb.insert_feed_monitor_data(db_doc)
+        
+        # Emit real-time feed monitor update via WebSocket
+        socketio.emit('feed_monitor_update', {
+            'data': feed_data,
+            'status': 'connected'
+        })
+        
+        print(f"🍔 Feed Monitor: Cattle {cattle_id} consumed {feed_data['total_feed']}kg feed")
+        
+    except Exception as e:
+        print(f"Error processing feed monitor data: {str(e)}")
+        import traceback
+        traceback.print_exc()
+
+def process_gate_data(data, topic):
+    """Process gate data (RFID + weight) received from MQTT"""
+    global latest_gate_data, cattle_registry, unique_rfid_in, unique_rfid_out, last_date_in, last_date_out
+    
+    try:
+        # Extract gate sensor values
+        rfid_tag = data.get('rfidTag', data.get('rfid_tag', data.get('rfid', '')))
+        
+        # IGNORE messages with no RFID tag (e.g., "no_cattle_at_gate")
+        # Only process messages that have an actual RFID tag
+        if not rfid_tag or not rfid_tag.strip():
+            return  # Skip this message - no RFID scanned
+        
         # Create standardized gate data structure
         timestamp = data.get('timestamp', datetime.now().isoformat())
         
@@ -343,11 +534,39 @@ def process_gate_data(data, topic):
         else:
             formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        # Extract gate sensor values
-        rfid_tag = data.get('rfidTag', data.get('rfid_tag', data.get('rfid', '')))
         weight = float(data.get('weight', data.get('loadCell', data.get('load_cell', 0))))
         gate_status = data.get('gateStatus', data.get('gate_status', data.get('status', 'unknown')))
-        direction = data.get('direction', data.get('entry_exit', 'unknown'))  # in/out/unknown
+        direction = data.get('direction', '')  # Try to get direction from MQTT payload
+        
+        # Get current IST time for date reset logic
+        ist = timezone('Asia/Kolkata')
+        current_time = datetime.now(ist)
+        current_date = current_time.date()
+        
+        # Use direction from MQTT payload, or determine based on time if not provided
+        if not direction or direction.lower() not in ['in', 'out']:
+            current_hour = current_time.hour
+            # 5 AM to 4 PM (5:00 - 15:59) = IN (morning: cattle going to pasture)
+            # 4 PM to 5 AM (16:00 - 4:59) = OUT (evening: cattle returning)
+            direction = 'in' if 5 <= current_hour < 16 else 'out'
+        
+        direction = direction.lower()
+        
+        # Track unique RFIDs per time period (only real RFIDs reach here)
+        if direction == 'in':
+            # Reset IN set if date changed
+            if last_date_in != current_date:
+                unique_rfid_in.clear()
+            # Add RFID to unique set for this period
+            unique_rfid_in.add(rfid_tag)
+            last_date_in = current_date
+        else:  # direction == 'out'
+            # Reset OUT set if date changed (at 5 AM)
+            if last_date_out != current_date:
+                unique_rfid_out.clear()
+            # Add RFID to unique set for this period
+            unique_rfid_out.add(rfid_tag)
+            last_date_out = current_date
         
         gate_data = {
             'timestamp': formatted_time,
@@ -359,7 +578,7 @@ def process_gate_data(data, topic):
         }
         
         # Update cattle registry with RFID -> weight mapping
-        if rfid_tag and weight > 0:
+        if rfid_tag and rfid_tag.strip() and weight > 0:
             if rfid_tag not in cattle_registry:
                 cattle_registry[rfid_tag] = {
                     'rfid_tag': rfid_tag,
@@ -367,7 +586,8 @@ def process_gate_data(data, topic):
                     'weight_history': [],
                     'first_seen': formatted_time,
                     'last_seen': formatted_time,
-                    'total_entries': 0
+                    'total_entries': 0,
+                    'total_exits': 0
                 }
             else:
                 cattle_registry[rfid_tag]['latest_weight'] = weight
@@ -381,13 +601,31 @@ def process_gate_data(data, topic):
             if len(cattle_registry[rfid_tag]['weight_history']) > 10:
                 cattle_registry[rfid_tag]['weight_history'].pop(0)
             
-            # Count entries
-            if direction.lower() == 'in':
-                cattle_registry[rfid_tag]['total_entries'] += 1
+            # Count only the first occurrence of unique RFID in each period
+            if direction == 'in' and rfid_tag in unique_rfid_in:
+                # Count this as an entry (increment once per day for this RFID in morning)
+                pass  # Already tracked in the set above
+            elif direction == 'out' and rfid_tag in unique_rfid_out:
+                # Count this as an exit (increment once per day for this RFID in evening)
+                pass  # Already tracked in the set above
         
         # Store in buffer
         gate_data_buffer.append(gate_data)
         latest_gate_data = gate_data.copy()
+        
+        # Save to MongoDB
+        if mongodb.connected:
+            db_doc = GateDataModel.create(
+                cattle_id=rfid_tag or 'unknown',
+                rfid_tag=rfid_tag,
+                weight=weight,
+                gate_status=gate_status,
+                timestamp_readable=formatted_time,
+                topic=topic
+            )
+            doc_id = mongodb.insert_gate_data(db_doc)
+            if doc_id:
+                gate_data['_id'] = doc_id
         
         # Emit real-time gate update via WebSocket
         socketio.emit('gate_update', {
@@ -402,27 +640,12 @@ def process_gate_data(data, topic):
         print(f"Error processing gate data: {str(e)}")
 
 # Initialize MQTT Client with authentication if provided
-mqtt_client = mqtt.Client()
+import uuid
+mqtt_client = mqtt.Client(client_id=f"cattlenet-backend-{uuid.uuid4().hex[:8]}")
 
 if MQTT_USERNAME and MQTT_PASSWORD:
     mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
-
-mqtt_client.on_connect = on_connect
-mqtt_client.on_disconnect = on_disconnect
-mqtt_client.on_message = on_message
-
-def start_mqtt_client():
-    """Start the MQTT client in a separate thread"""
-    try:
-        print(f"Attempting to connect to MQTT broker at {MQTT_BROKER}:{MQTT_PORT}")
-        mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
-        mqtt_client.loop_forever()
-    except Exception as e:
-        print(f"Error starting MQTT client: {str(e)}")
-        # If MQTT connection fails, start simulated data generation
-        print("Starting simulated data generation instead...")
-        generate_simulated_data()
-
+    
 def generate_simulated_data():
     """Generate simulated cattle data when MQTT is not available"""
     global latest_data
@@ -480,6 +703,29 @@ def generate_simulated_data():
         except Exception as e:
             print(f"Error in simulated data generation: {str(e)}")
             time.sleep(5)
+
+
+def start_mqtt_client():
+    """Start the MQTT client in a separate thread"""
+    # Check if simulation mode is enabled
+    if os.getenv('ENABLE_SIMULATION', 'False').lower() in ('true', '1', 'yes'):
+        print("Simulation mode enabled. Starting simulated data generation...")
+        generate_simulated_data()
+        return
+
+    try:
+        print(f"Attempting to connect to MQTT broker at {MQTT_BROKER}:{MQTT_PORT}")
+        mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
+        # Use loop_start() to run the network loop in a background thread
+        mqtt_client.loop_start()
+        # Keep the function running
+        while True:
+            time.sleep(1)
+    except Exception as e:
+        print(f"Error starting MQTT client: {str(e)}")
+        # If MQTT connection fails, start simulated data generation
+        print("Starting simulated data generation instead...")
+        generate_simulated_data()
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -1001,10 +1247,9 @@ def get_gate_data():
         # Get latest data
         latest = latest_gate_data if latest_gate_data else {}
         
-        # Calculate statistics
-        total_entries = len([d for d in data_list if d.get('direction') == 'in'])
-        total_exits = len([d for d in data_list if d.get('direction') == 'out'])
-        unique_cattle = len(set([d['rfid_tag'] for d in data_list if d.get('rfid_tag')]))
+        # Calculate statistics based on unique RFID counts
+        total_entries = len(unique_rfid_in)  # Count of unique RFIDs in morning period
+        total_exits = len(unique_rfid_out)   # Count of unique RFIDs in evening period
         
         # Get recent activity (last 10 readings)
         recent_activity = data_list[-10:] if len(data_list) >= 10 else data_list
@@ -1039,13 +1284,49 @@ def get_gate_data():
             'statistics': {
                 'total_entries': total_entries,
                 'total_exits': total_exits,
-                'unique_cattle': unique_cattle,
                 'total_readings': len(data_list),
                 'weight_stats': weight_stats
             },
             'cattle_registry': cattle_registry,
             'recent_activity': recent_activity,
             'alerts': alerts,
+            'mqtt_connected': mqtt_connected
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/feed-monitor', methods=['GET'])
+def get_feed_monitor_data():
+    """Get feed and water consumption data"""
+    try:
+        # Try to get data from MongoDB first
+        if mongodb.connected:
+            data_list = mongodb.get_feed_monitor_data(limit=20)
+            # Convert ObjectId and datetime for JSON serialization
+            for doc in data_list:
+                if '_id' in doc:
+                    doc['_id'] = str(doc['_id'])
+                if 'timestamp' in doc and isinstance(doc['timestamp'], datetime):
+                    doc['timestamp'] = doc['timestamp'].isoformat()
+        else:
+            # Fallback to in-memory buffer
+            data_list = list(feed_monitor_buffer)[-20:]
+        
+        # Get latest data (still from memory for real-time status if needed, or just empty)
+        latest = latest_feed_data if latest_feed_data else {}
+        
+        # Inject the historical/db data as recent_activity for the frontend
+        latest['recent_activity'] = data_list
+        
+        return jsonify({
+            'status': 'success',
+            'latest_data': latest,
+            'statistics': {
+                'total_readings': len(data_list),
+            },
             'mqtt_connected': mqtt_connected
         })
         
@@ -1083,6 +1364,280 @@ def get_cattle_details(rfid_tag):
             'message': str(e)
         }), 500
 
+# ==================== MongoDB Data Retrieval APIs ====================
+
+@app.route('/api/db/status', methods=['GET'])
+def get_db_status():
+    """Get MongoDB connection status and database statistics"""
+    try:
+        stats = mongodb.get_statistics_summary() if mongodb.connected else {}
+        return jsonify({
+            'status': 'success',
+            'mongodb_connected': mongodb.connected,
+            'mongodb_uri': mongodb.mongo_uri if mongodb.connected else None,
+            'database': mongodb.db_name if mongodb.connected else None,
+            'collections': stats
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/db/cattle', methods=['GET'])
+def get_all_cattle_db():
+    """Get list of all cattle IDs from database"""
+    try:
+        cattle_ids = mongodb.get_all_cattle() if mongodb.connected else []
+        return jsonify({
+            'status': 'success',
+            'cattle_ids': cattle_ids,
+            'total_count': len(cattle_ids)
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/db/sensor-data/<cattle_id>', methods=['GET'])
+def get_cattle_sensor_data(cattle_id):
+    """Get sensor data for a specific cattle"""
+    try:
+        hours = request.args.get('hours', 24, type=int)
+        limit = request.args.get('limit', 100, type=int)
+        
+        if not mongodb.connected:
+            return jsonify({
+                'status': 'error',
+                'message': 'MongoDB not connected'
+            }), 503
+        
+        data = mongodb.get_sensor_data(cattle_id, hours=hours, limit=limit)
+        
+        # Convert datetime to string for JSON serialization
+        for doc in data:
+            if 'timestamp' in doc:
+                doc['timestamp'] = doc['timestamp'].isoformat()
+            if '_id' in doc:
+                doc['_id'] = str(doc['_id'])
+        
+        return jsonify({
+            'status': 'success',
+            'cattle_id': cattle_id,
+            'period_hours': hours,
+            'records_count': len(data),
+            'data': data
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/db/feed-monitor', methods=['GET'])
+def get_feed_monitor_data_db():
+    """Get all recent feed monitor data from database"""
+    try:
+        hours = request.args.get('hours', 24, type=int)
+        limit = request.args.get('limit', 100, type=int)
+        
+        if not mongodb.connected:
+            return jsonify({
+                'status': 'error',
+                'message': 'MongoDB not connected'
+            }), 503
+        
+        data = mongodb.get_feed_monitor_data(hours=hours, limit=limit)
+        
+        # Convert datetime to string for JSON serialization
+        for doc in data:
+            if 'timestamp' in doc:
+                doc['timestamp'] = doc['timestamp'].isoformat()
+            if '_id' in doc:
+                doc['_id'] = str(doc['_id'])
+        
+        return jsonify({
+            'status': 'success',
+            'period_hours': hours,
+            'records_count': len(data),
+            'data': data
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/db/gate-data', methods=['GET'])
+def get_gate_data_db():
+    """Get gate/RFID data from database"""
+    try:
+        hours = request.args.get('hours', 24, type=int)
+        limit = request.args.get('limit', 200, type=int)
+        
+        if not mongodb.connected:
+            return jsonify({
+                'status': 'error',
+                'message': 'MongoDB not connected'
+            }), 503
+        
+        data = mongodb.get_gate_data(hours=hours, limit=limit)
+        
+        # Convert datetime to string for JSON serialization
+        for doc in data:
+            if 'timestamp' in doc:
+                doc['timestamp'] = doc['timestamp'].isoformat()
+            if '_id' in doc:
+                doc['_id'] = str(doc['_id'])
+        
+        return jsonify({
+            'status': 'success',
+            'period_hours': hours,
+            'records_count': len(data),
+            'data': data
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/db/environmental-data', methods=['GET'])
+def get_environmental_data_db():
+    """Get environmental data from database"""
+    try:
+        zone = request.args.get('zone', None)
+        hours = request.args.get('hours', 24, type=int)
+        limit = request.args.get('limit', 100, type=int)
+        
+        if not mongodb.connected:
+            return jsonify({
+                'status': 'error',
+                'message': 'MongoDB not connected'
+            }), 503
+        
+        data = mongodb.get_environmental_data(zone=zone, hours=hours, limit=limit)
+        
+        # Convert datetime to string for JSON serialization
+        for doc in data:
+            if 'timestamp' in doc:
+                doc['timestamp'] = doc['timestamp'].isoformat()
+            if '_id' in doc:
+                doc['_id'] = str(doc['_id'])
+        
+        return jsonify({
+            'status': 'success',
+            'zone': zone or 'all',
+            'period_hours': hours,
+            'records_count': len(data),
+            'data': data
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/db/cattle-stats/<cattle_id>', methods=['GET'])
+def get_cattle_stats_db(cattle_id):
+    """Get aggregated statistics for a specific cattle"""
+    try:
+        hours = request.args.get('hours', 24, type=int)
+        
+        if not mongodb.connected:
+            return jsonify({
+                'status': 'error',
+                'message': 'MongoDB not connected'
+            }), 503
+        
+        stats = mongodb.get_cattle_stats(cattle_id, hours=hours)
+        
+        # Convert datetime to string for JSON serialization
+        if stats.get('feed_stats') and 'timestamp' in stats['feed_stats']:
+            stats['feed_stats']['timestamp'] = stats['feed_stats']['timestamp'].isoformat()
+        
+        return jsonify({
+            'status': 'success',
+            'data': stats
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/db/export/<data_type>', methods=['GET'])
+def export_data(data_type):
+    """Export data in various formats (json, csv)"""
+    try:
+        format_type = request.args.get('format', 'json')
+        hours = request.args.get('hours', 24, type=int)
+        
+        if not mongodb.connected:
+            return jsonify({
+                'status': 'error',
+                'message': 'MongoDB not connected'
+            }), 503
+        
+        # Fetch appropriate data based on type
+        if data_type == 'feed_monitor':
+            data = mongodb.get_feed_monitor_data(hours=hours, limit=10000)
+        elif data_type == 'gate':
+            data = mongodb.get_gate_data(hours=hours, limit=10000)
+        elif data_type == 'environmental':
+            data = mongodb.get_environmental_data(hours=hours, limit=10000)
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': f'Unknown data type: {data_type}'
+            }), 400
+        
+        # Convert datetime to string
+        for doc in data:
+            if 'timestamp' in doc:
+                doc['timestamp'] = doc['timestamp'].isoformat()
+            if '_id' in doc:
+                doc['_id'] = str(doc['_id'])
+        
+        if format_type == 'json':
+            return jsonify({
+                'status': 'success',
+                'data_type': data_type,
+                'records_count': len(data),
+                'data': data
+            })
+        elif format_type == 'csv':
+            # Convert to CSV - basic implementation
+            if not data:
+                return jsonify({'status': 'error', 'message': 'No data to export'}), 404
+            
+            import csv
+            from io import StringIO
+            
+            output = StringIO()
+            fieldnames = list(data[0].keys())
+            writer = csv.DictWriter(output, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(data)
+            
+            return output.getvalue(), 200, {
+                'Content-Disposition': f'attachment; filename={data_type}_{hours}h.csv',
+                'Content-Type': 'text/csv'
+            }
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': f'Unsupported format: {format_type}'
+            }), 400
+            
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
 # WebSocket Event Handlers
 @socketio.on('connect')
 def handle_connect():
@@ -1100,6 +1655,13 @@ def handle_disconnect():
 
 if __name__ == '__main__':
     try:
+        # Initialize MongoDB connection
+        print("Initializing MongoDB connection...")
+        if mongodb.connect():
+            print("[OK] MongoDB database initialized")
+        else:
+            print("[WARN] MongoDB not available - running in memory-only mode")
+        
         # Start the MQTT client in a separate thread
         mqtt_thread = threading.Thread(target=start_mqtt_client, daemon=True)
         mqtt_thread.start()
@@ -1123,3 +1685,7 @@ if __name__ == '__main__':
         print(f"Error starting server: {str(e)}")
         import traceback
         traceback.print_exc()
+    finally:
+        # Cleanup on shutdown
+        if mongodb.connected:
+            mongodb.disconnect()

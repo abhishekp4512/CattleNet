@@ -8,6 +8,17 @@ export const formatTimestamp = (timestamp) => {
 };
 
 /**
+ * Format number with specified decimals and unit
+ * @param {number} value - Number to format
+ * @param {number} decimals - Number of decimal places
+ * @param {string} unit - Unit to append
+ * @returns {string} Formatted number with unit
+ */
+export const formatNumber = (value, decimals = 1, unit = '') => {
+  return `${Number(value).toFixed(decimals)}${unit ? ` ${unit}` : ''}`;
+};
+
+/**
  * Scale accelerometer values for radar chart visualization
  * @param {number} val - Accelerometer value
  * @returns {number} Scaled value

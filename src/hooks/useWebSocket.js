@@ -1,8 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { io } from 'socket.io-client';
 
-export const useWebSocket = () => {
+const useWebSocket = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('Checking...');
+  const [lastMessage, setLastMessage] = useState(null);
+  const socketRef = useRef(null);
 
   const checkConnection = async () => {
     try {
@@ -23,17 +26,63 @@ export const useWebSocket = () => {
   };
 
   useEffect(() => {
+    // Only create socket once
+    if (!socketRef.current) {
+      socketRef.current = io('http://localhost:5000', {
+        transports: ['websocket'],
+        reconnection: true,
+      });
+
+      // Set up WebSocket event listeners
+      socketRef.current.on('connect', () => {
+        console.log('✓ WebSocket connected');
+        setIsConnected(true);
+        setConnectionStatus('Connected');
+      });
+
+      socketRef.current.on('disconnect', () => {
+        console.log('✗ WebSocket disconnected');
+        setIsConnected(false);
+        setConnectionStatus('Disconnected');
+      });
+
+      socketRef.current.on('sensor_update', (data) => {
+        console.log('📊 Received sensor update:', data);
+        setLastMessage({ type: 'sensor_update', data });
+      });
+
+      // Backend emits 'feed_monitor_update' with shape { data: {...}, status }
+      socketRef.current.on('feed_monitor_update', (payload) => {
+        console.log('🍔 Received feed_monitor_update:', payload);
+        const data = payload && payload.data ? payload.data : payload;
+        setLastMessage({ type: 'feed_monitor', data });
+      });
+
+      // Backend emits 'gate_update' with shape { data: {...}, status }
+      socketRef.current.on('gate_update', (payload) => {
+        console.log('📍 Received gate_update:', payload);
+        const data = payload && payload.data ? payload.data : payload;
+        setLastMessage({ type: 'gate_update', data });
+      });
+    }
+
     checkConnection();
     
     // Check connection status every 10 seconds
     const interval = setInterval(checkConnection, 10000);
     
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      // Don't disconnect on unmount - keep connection alive
+    };
   }, []);
 
   return {
     isConnected,
     connectionStatus,
-    checkConnection
+    checkConnection,
+    lastMessage
   };
 };
+
+export default useWebSocket;

@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-import { io } from "socket.io-client";
+import useWebSocket from "../../hooks/useWebSocket";
 
 // API Configuration
 const API_BASE_URL = process.env.REACT_APP_API_URL || "http://127.0.0.1:5000";
-const WEBSOCKET_URL = process.env.REACT_APP_WEBSOCKET_URL || "http://127.0.0.1:5000";
 
 const GateMonitor = () => {
   const [gateData, setGateData] = useState(null);
@@ -13,91 +12,47 @@ const GateMonitor = () => {
   const [statistics, setStatistics] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [connected, setConnected] = useState(false);
+  const { isConnected, lastMessage } = useWebSocket();
 
-  useEffect(() => {
-    // Fetch initial gate data
-    const fetchGateData = async () => {
-      try {
-        setLoading(true);
-        const response = await axios.get(`${API_BASE_URL}/api/gate`);
-        
-        if (response.data.status === "success") {
-          setGateData(response.data.latest_data);
-          setCattleRegistry(response.data.cattle_registry);
-          setRecentActivity(response.data.recent_activity);
-          setStatistics(response.data.statistics);
-        } else {
-          setError("Failed to fetch gate data");
-        }
-      } catch (err) {
-        setError("Error connecting to the server. Is the backend running?");
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    // Initialize WebSocket connection for real-time updates
-    const socket = io(WEBSOCKET_URL, {
-      transports: ['websocket'],
-      reconnection: true,
-      reconnectionAttempts: 5
-    });
-
-    socket.on('connect', () => {
-      console.log('Connected to gate monitoring WebSocket');
-      setConnected(true);
-      setError(null);
-    });
-
-    socket.on('gate_update', (data) => {
-      console.log('Received gate update:', data);
+  // Fetch gate data from API
+  const fetchGateData = async () => {
+    try {
+      setLoading(true);
+      const response = await axios.get(`${API_BASE_URL}/api/gate`);
       
-      if (data.data) {
-        setGateData(data.data);
-        
-        // Update recent activity
-        setRecentActivity(prev => {
-          const newActivity = [data.data, ...prev.slice(0, 9)]; // Keep last 10
-          return newActivity;
-        });
-        
-        // Update cattle registry if available
-        if (data.registry && data.data.rfid_tag) {
-          setCattleRegistry(prev => ({
-            ...prev,
-            [data.data.rfid_tag]: data.registry
-          }));
-        }
-        
-        // Update statistics (simplified)
-        setStatistics(prev => ({
-          ...prev,
-          total_readings: (prev.total_readings || 0) + 1
-        }));
+      if (response.data.status === "success") {
+        setGateData(response.data.latest_data);
+        setCattleRegistry(response.data.cattle_registry);
+        setRecentActivity(response.data.recent_activity);
+        setStatistics(response.data.statistics);
+      } else {
+        setError("Failed to fetch gate data");
       }
-    });
+    } catch (err) {
+      setError("Error connecting to the server. Is the backend running?");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    socket.on('connect_error', (error) => {
-      console.error('Gate WebSocket connection error:', error);
-      setConnected(false);
-      setError("Failed to connect to real-time gate monitoring");
-    });
-
-    socket.on('disconnect', () => {
-      console.log('Disconnected from gate monitoring WebSocket');
-      setConnected(false);
-    });
-
-    // Initial data fetch
+  // Initial data fetch
+  useEffect(() => {
     fetchGateData();
-
-    // Cleanup
-    return () => {
-      socket.disconnect();
-    };
+    
+    // Poll for gate data every 5 seconds as fallback
+    const pollInterval = setInterval(fetchGateData, 5000);
+    
+    return () => clearInterval(pollInterval);
   }, []);
+
+  // Handle WebSocket real-time updates
+  useEffect(() => {
+    if (lastMessage && lastMessage.type === 'gate_update') {
+      console.log('🔄 Gate update via WebSocket:', lastMessage.data);
+      fetchGateData(); // Refresh data when WebSocket update arrives
+    }
+  }, [lastMessage]);
 
   const formatTimestamp = (timestamp) => {
     return new Date(timestamp).toLocaleString();
@@ -180,7 +135,7 @@ const GateMonitor = () => {
             Gate Activity Monitor
           </h2>
           
-          {connected && (
+          {isConnected && (
             <div className="flex items-center bg-green-50 text-green-700 px-4 py-2 rounded-full">
               <span className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></span>
               <span className="text-sm font-medium">Live Monitoring</span>
@@ -385,9 +340,9 @@ const GateMonitor = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
             <span className="text-gray-700">RFID Reader</span>
-            <div className={`flex items-center ${connected ? 'text-green-600' : 'text-red-600'}`}>
-              <span className={`w-2 h-2 rounded-full mr-2 ${connected ? 'bg-green-500' : 'bg-red-500'}`}></span>
-              <span className="text-sm font-medium">{connected ? 'Active' : 'Offline'}</span>
+            <div className={`flex items-center ${isConnected ? 'text-green-600' : 'text-red-600'}`}>
+              <span className={`w-2 h-2 rounded-full mr-2 ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></span>
+              <span className="text-sm font-medium">{isConnected ? 'Active' : 'Offline'}</span>
             </div>
           </div>
 
