@@ -8,7 +8,7 @@ const HealthStats = () => {
 
   const fetchHealthStats = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/health-stats');
+      const response = await fetch('http://localhost:3000/api/health-stats');
       if (response.ok) {
         const data = await response.json();
         setHealthData(data);
@@ -56,7 +56,7 @@ const HealthStats = () => {
     }
   };
 
-  const data = healthData?.status === 'success' ? healthData : mockData;
+  const data = (healthData?.status === 'success' && healthData?.cattle_distribution) ? healthData : mockData;
   const COLORS = ['#10B981', '#F59E0B', '#EF4444'];
 
   return (
@@ -73,19 +73,19 @@ const HealthStats = () => {
           <p className="text-2xl font-bold text-green-800">{data.health_metrics?.total_cattle || 16}</p>
           <p className="text-xs text-green-600">Total Cattle</p>
         </div>
-        
+
         <div className="text-center p-3 bg-blue-50 rounded-lg">
           <TrendingUp className="mx-auto h-6 w-6 text-blue-600 mb-2" />
           <p className="text-2xl font-bold text-blue-800">{data.health_metrics?.healthy_percentage || 75}%</p>
           <p className="text-xs text-blue-600">Healthy</p>
         </div>
-        
+
         <div className="text-center p-3 bg-orange-50 rounded-lg">
           <span className="text-2xl">🌡️</span>
           <p className="text-2xl font-bold text-orange-800">{data.health_metrics?.average_temp || 28.5}°C</p>
           <p className="text-xs text-orange-600">Avg Temp</p>
         </div>
-        
+
         <div className="text-center p-3 bg-purple-50 rounded-lg">
           <AlertTriangle className="mx-auto h-6 w-6 text-purple-600 mb-2" />
           <p className="text-2xl font-bold text-purple-800">{data.health_metrics?.activity_score || 85}</p>

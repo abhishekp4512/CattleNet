@@ -9,7 +9,7 @@ const EnvironmentalMonitor = () => {
 
   const fetchData = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/environment');
+      const response = await fetch('http://localhost:3000/api/environment');
       const data = await response.json();
       setEnvironmentalData(data);
       console.log('Environmental data:', data);
@@ -31,7 +31,7 @@ const EnvironmentalMonitor = () => {
         <h1 className="text-3xl font-bold text-gray-900 mb-6">
           Environmental Monitoring Dashboard
         </h1>
-        
+
         {error && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
             Error: {error}

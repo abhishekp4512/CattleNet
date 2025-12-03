@@ -8,7 +8,7 @@ const IntegratedDashboard = () => {
 
   const fetchIntegratedData = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/integrated-data');
+      const response = await fetch('http://localhost:3000/api/integrated-data');
       if (response.ok) {
         const data = await response.json();
         setIntegratedData(data);
@@ -46,7 +46,7 @@ const IntegratedDashboard = () => {
       <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-red-500">
         <h3 className="text-lg font-semibold text-red-800 mb-2">Integration Error</h3>
         <p className="text-red-600">{error || 'No integrated data available'}</p>
-        <button 
+        <button
           onClick={fetchIntegratedData}
           className="mt-2 px-4 py-2 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
         >
@@ -99,7 +99,7 @@ const IntegratedDashboard = () => {
             </span>
           </div>
         </div>
-        
+
         <div className={`p-3 rounded-lg border-2 ${availability.environmental_data_available ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50'}`}>
           <div className="flex items-center">
             <Sun className={`h-5 w-5 mr-2 ${availability.environmental_data_available ? 'text-blue-600' : 'text-gray-400'}`} />
@@ -108,7 +108,7 @@ const IntegratedDashboard = () => {
             </span>
           </div>
         </div>
-        
+
         <div className={`p-3 rounded-lg border-2 ${availability.both_available ? 'border-purple-200 bg-purple-50' : 'border-gray-200 bg-gray-50'}`}>
           <div className="flex items-center">
             <Heart className={`h-5 w-5 mr-2 ${availability.both_available ? 'text-purple-600' : 'text-gray-400'}`} />
@@ -121,14 +121,14 @@ const IntegratedDashboard = () => {
 
       {/* Main Data Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
+
         {/* Cattle Sensor Data */}
         <div className="space-y-4">
           <h3 className="text-lg font-semibold text-gray-700 flex items-center">
             <Activity className="mr-2 h-5 w-5 text-blue-600" />
             Cattle Sensor Data
           </h3>
-          
+
           {availability.cattle_sensors_available ? (
             <>
               {/* Health Status */}
@@ -219,7 +219,7 @@ const IntegratedDashboard = () => {
             <Sun className="mr-2 h-5 w-5 text-yellow-600" />
             Environmental Data
           </h3>
-          
+
           {availability.environmental_data_available ? (
             <>
               {/* Light and Time Status */}
@@ -236,7 +236,7 @@ const IntegratedDashboard = () => {
                     {environment.day_night === 'day' ? 'Daytime' : 'Nighttime'}
                   </p>
                 </div>
-                
+
                 <div className="p-3 bg-green-50 rounded-lg text-center">
                   {environment.cattle_presence ? (
                     <Eye className="mx-auto h-6 w-6 text-green-600 mb-1" />
@@ -259,7 +259,7 @@ const IntegratedDashboard = () => {
                   </p>
                   <p className="text-xs text-orange-600">Ambient Temp</p>
                 </div>
-                
+
                 <div className="p-3 bg-blue-50 rounded-lg text-center">
                   <Droplets className="mx-auto h-6 w-6 text-blue-600 mb-1" />
                   <p className="text-lg font-bold text-blue-800">

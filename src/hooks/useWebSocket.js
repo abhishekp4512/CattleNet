@@ -9,7 +9,7 @@ const useWebSocket = () => {
 
   const checkConnection = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/mqtt-status');
+      const response = await fetch('http://localhost:3000/api/mqtt-status');
       if (response.ok) {
         const data = await response.json();
         setIsConnected(data.mqtt_connected || false);
@@ -28,7 +28,7 @@ const useWebSocket = () => {
   useEffect(() => {
     // Only create socket once
     if (!socketRef.current) {
-      socketRef.current = io('http://localhost:5000', {
+      socketRef.current = io('http://localhost:3000', {
         transports: ['websocket'],
         reconnection: true,
       });
@@ -67,10 +67,10 @@ const useWebSocket = () => {
     }
 
     checkConnection();
-    
+
     // Check connection status every 10 seconds
     const interval = setInterval(checkConnection, 10000);
-    
+
     return () => {
       clearInterval(interval);
       // Don't disconnect on unmount - keep connection alive

@@ -15,7 +15,7 @@ const useFeedMonitor = () => {
   useEffect(() => {
     const fetchFeedData = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/feed-monitor');
+        const response = await fetch('http://localhost:3000/api/feed-monitor');
         if (response.ok) {
           const data = await response.json();
           if (data.status === 'success') {
@@ -64,29 +64,37 @@ const useFeedMonitor = () => {
         };
       });
 
+      // Filter out invalid entries
+      const validActivities = normalized.filter(act => {
+        const isValidId = act.cattle_id &&
+          !['unknown', 'no cattle', 'none', '', 'no_cattle_detected'].includes(act.cattle_id.toLowerCase());
+        const hasConsumption = act.feed_consumed > 0 || act.water_consumed > 0;
+        return isValidId && hasConsumption;
+      });
+
       // Compute totals if not present in payload
       const totalFeed = typeof payload.total_feed !== 'undefined'
         ? parseFloat(payload.total_feed)
-        : normalized.reduce((s, a) => s + (a.feed_consumed || 0), 0);
+        : validActivities.reduce((s, a) => s + (a.feed_consumed || 0), 0);
 
       const totalWater = typeof payload.total_water !== 'undefined'
         ? parseFloat(payload.total_water)
-        : normalized.reduce((s, a) => s + (a.water_consumed || 0), 0);
+        : validActivities.reduce((s, a) => s + (a.water_consumed || 0), 0);
 
       const avgFeed = typeof payload.avg_feed_per_cattle !== 'undefined'
         ? parseFloat(payload.avg_feed_per_cattle)
-        : (normalized.length ? totalFeed / normalized.length : 0);
+        : (validActivities.length ? totalFeed / validActivities.length : 0);
 
       const avgWater = typeof payload.avg_water_per_cattle !== 'undefined'
         ? parseFloat(payload.avg_water_per_cattle)
-        : (normalized.length ? totalWater / normalized.length : 0);
+        : (validActivities.length ? totalWater / validActivities.length : 0);
 
       setFeedData(prevData => ({
 
         avgFeedPerCattle: isNaN(avgFeed) ? prevData.avgFeedPerCattle : avgFeed,
         avgWaterPerCattle: isNaN(avgWater) ? prevData.avgWaterPerCattle : avgWater,
         recentActivity: [
-          ...normalized,
+          ...validActivities,
           ...prevData.recentActivity
         ].slice(0, 20) // Keep recent 20 activities
       }));

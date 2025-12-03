@@ -3,7 +3,7 @@ import axios from "axios";
 import useWebSocket from "../../hooks/useWebSocket";
 
 // API Configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || "http://127.0.0.1:5000";
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://127.0.0.1:3000";
 
 const GateMonitor = () => {
   const [gateData, setGateData] = useState(null);
@@ -19,7 +19,7 @@ const GateMonitor = () => {
     try {
       setLoading(true);
       const response = await axios.get(`${API_BASE_URL}/api/gate`);
-      
+
       if (response.data.status === "success") {
         setGateData(response.data.latest_data);
         setCattleRegistry(response.data.cattle_registry);
@@ -39,10 +39,10 @@ const GateMonitor = () => {
   // Initial data fetch
   useEffect(() => {
     fetchGateData();
-    
+
     // Poll for gate data every 5 seconds as fallback
     const pollInterval = setInterval(fetchGateData, 5000);
-    
+
     return () => clearInterval(pollInterval);
   }, []);
 
@@ -113,7 +113,7 @@ const GateMonitor = () => {
       <div className="max-w-lg mx-auto p-8 bg-white rounded-lg shadow-md text-center my-8">
         <h3 className="text-xl font-bold text-danger mb-4">Error</h3>
         <p className="text-gray-700 mb-4">{error}</p>
-        <button 
+        <button
           onClick={() => window.location.reload()}
           className="px-4 py-2 bg-primary text-white rounded hover:bg-primary-hover transition-colors"
         >
@@ -134,7 +134,7 @@ const GateMonitor = () => {
             </svg>
             Gate Activity Monitor
           </h2>
-          
+
           {isConnected && (
             <div className="flex items-center bg-green-50 text-green-700 px-4 py-2 rounded-full">
               <span className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></span>
@@ -178,19 +178,7 @@ const GateMonitor = () => {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Unique Cattle</p>
-              <p className="text-2xl font-bold text-blue-600">{statistics.unique_cattle || 0}</p>
-            </div>
-            <div className="p-3 bg-blue-100 rounded-lg">
-              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-            </div>
-          </div>
-        </div>
+
 
         <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
           <div className="flex items-center justify-between">
@@ -218,7 +206,7 @@ const GateMonitor = () => {
             </svg>
             Latest Gate Reading
           </h3>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-gray-50 rounded-lg p-4">
               <div className="flex items-center justify-between mb-2">
@@ -263,7 +251,7 @@ const GateMonitor = () => {
             </svg>
             Registered Cattle
           </h3>
-          
+
           <div className="space-y-3 max-h-96 overflow-y-auto">
             {Object.keys(cattleRegistry).length === 0 ? (
               <p className="text-gray-500 text-center py-8">No cattle registered yet</p>
@@ -278,7 +266,7 @@ const GateMonitor = () => {
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-medium text-blue-600">{cattleInfo.total_entries} entries</p>
-                      <button 
+                      <button
                         className="text-xs text-primary hover:underline"
                       >
                         View Details
@@ -299,7 +287,7 @@ const GateMonitor = () => {
             </svg>
             Recent Activity
           </h3>
-          
+
           <div className="space-y-3 max-h-96 overflow-y-auto">
             {recentActivity.length === 0 ? (
               <p className="text-gray-500 text-center py-8">No recent activity</p>
@@ -336,7 +324,7 @@ const GateMonitor = () => {
           </svg>
           System Status
         </h3>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
             <span className="text-gray-700">RFID Reader</span>

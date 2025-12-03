@@ -8,7 +8,7 @@ const EnvironmentalCard = () => {
 
   const fetchEnvironmentalData = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/environment');
+      const response = await fetch('http://localhost:3000/api/environment');
       if (response.ok) {
         const data = await response.json();
         setEnvironmentalData(data);
@@ -47,7 +47,7 @@ const EnvironmentalCard = () => {
       <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-red-500">
         <h3 className="text-lg font-semibold text-red-800 mb-2">Environmental Monitor Error</h3>
         <p className="text-red-600">{error}</p>
-        <button 
+        <button
           onClick={fetchEnvironmentalData}
           className="mt-2 px-4 py-2 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
         >
@@ -191,9 +191,8 @@ const EnvironmentalCard = () => {
       {/* Status Indicator */}
       <div className="flex items-center justify-between mt-4 pt-4 border-t">
         <div className="flex items-center text-sm text-gray-600">
-          <div className={`w-2 h-2 rounded-full mr-2 ${
-            environmentalData?.mqtt_connected ? 'bg-green-500' : 'bg-red-500'
-          }`}></div>
+          <div className={`w-2 h-2 rounded-full mr-2 ${environmentalData?.mqtt_connected ? 'bg-green-500' : 'bg-red-500'
+            }`}></div>
           MQTT {environmentalData?.mqtt_connected ? 'Connected' : 'Disconnected'}
         </div>
         <div className="text-xs text-gray-500">

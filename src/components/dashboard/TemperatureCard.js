@@ -79,42 +79,6 @@ const TemperatureCard = () => {
     <div className="bg-white rounded-lg shadow-md p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-gray-800">Temperature Monitoring</h3>
-        <div className="flex items-center space-x-2">
-          <div className="w-3 h-3 rounded-full bg-green-500"></div>
-          <span className="text-sm text-gray-600">
-            {temperatureData.mqtt_connected ? 'MQTT Connected' : 'Simulated Data'}
-          </span>
-        </div>
-      </div>
-
-      {/* Overall Statistics */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="text-center">
-          <div className="text-2xl font-bold" style={{ color: getTemperatureColor(overall_stats.average) }}>
-            {overall_stats.average}°C
-          </div>
-          <div className="text-sm text-gray-600">Average</div>
-        </div>
-        <div className="text-center">
-          <div className="text-2xl font-bold" style={{ color: getTemperatureColor(overall_stats.minimum) }}>
-            {overall_stats.minimum}°C
-          </div>
-          <div className="text-sm text-gray-600">Minimum</div>
-        </div>
-        <div className="text-center">
-          <div className="text-2xl font-bold" style={{ color: getTemperatureColor(overall_stats.maximum) }}>
-            {overall_stats.maximum}°C
-          </div>
-          <div className="text-sm text-gray-600">Maximum</div>
-        </div>
-      </div>
-
-      {/* Normal Range */}
-      <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-        <div className="text-sm text-gray-600 mb-1">Normal Range</div>
-        <div className="text-lg font-semibold text-green-600">
-          {normal_range.min}°C - {normal_range.max}°C
-        </div>
       </div>
 
       {/* Alerts */}
@@ -126,7 +90,7 @@ const TemperatureCard = () => {
               <div
                 key={index}
                 className="p-2 rounded-lg text-sm"
-                style={{ 
+                style={{
                   backgroundColor: `${getAlertColor(alert.type)}20`,
                   borderLeft: `4px solid ${getAlertColor(alert.type)}`
                 }}
@@ -152,7 +116,7 @@ const TemperatureCard = () => {
               </div>
               <div className="flex items-center space-x-4">
                 <div className="text-right">
-                  <div 
+                  <div
                     className="text-lg font-bold"
                     style={{ color: getTemperatureColor(stats.current) }}
                   >
