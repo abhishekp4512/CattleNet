@@ -15,7 +15,7 @@ const useFeedMonitor = () => {
   useEffect(() => {
     const fetchFeedData = async () => {
       try {
-        const response = await fetch('http://localhost:3000/api/feed-monitor');
+        const response = await fetch('http://localhost:5001/api/feed-monitor');
         if (response.ok) {
           const data = await response.json();
           if (data.status === 'success') {
@@ -105,3 +105,4 @@ const useFeedMonitor = () => {
 };
 
 export default useFeedMonitor;
+

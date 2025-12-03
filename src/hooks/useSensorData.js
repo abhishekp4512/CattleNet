@@ -11,14 +11,14 @@ export const useSensorData = () => {
       setIsLoading(true);
 
       // Fetch latest sensor reading
-      const latestResponse = await fetch('http://localhost:3000/api/latest');
+      const latestResponse = await fetch('http://localhost:5001/api/latest');
       if (latestResponse.ok) {
         const latestData = await latestResponse.json();
         setLatestReading(latestData);
       }
 
       // Fetch all sensor data
-      const dataResponse = await fetch('http://localhost:3000/api/data');
+      const dataResponse = await fetch('http://localhost:5001/api/data');
       if (dataResponse.ok) {
         const allData = await dataResponse.json();
         if (allData.status === 'success' && allData.data) {

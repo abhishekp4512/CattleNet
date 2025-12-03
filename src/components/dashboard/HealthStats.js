@@ -8,7 +8,7 @@ const HealthStats = () => {
 
   const fetchHealthStats = async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/health-stats');
+      const response = await fetch('http://localhost:5001/api/health-stats');
       if (response.ok) {
         const data = await response.json();
         setHealthData(data);

@@ -8,7 +8,7 @@ const IntegratedDashboard = () => {
 
   const fetchIntegratedData = async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/integrated-data');
+      const response = await fetch('http://localhost:5001/api/integrated-data');
       if (response.ok) {
         const data = await response.json();
         setIntegratedData(data);

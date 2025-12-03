@@ -8,7 +8,7 @@ const EnvironmentalCard = () => {
 
   const fetchEnvironmentalData = async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/environment');
+      const response = await fetch('http://localhost:5001/api/environment');
       if (response.ok) {
         const data = await response.json();
         setEnvironmentalData(data);

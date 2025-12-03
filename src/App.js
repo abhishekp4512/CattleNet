@@ -28,8 +28,8 @@ function App() {
     gyro_x: 1.5, gyro_y: 1.2, gyro_z: 0.8
   });
 
-  const API_BASE_URL = 'http://localhost:3000';
-  const WEBSOCKET_URL = 'http://localhost:3000';
+  const API_BASE_URL = 'http://localhost:5001';
+  const WEBSOCKET_URL = 'http://localhost:5001';
   const maxDataPoints = 20;
   const socketRef = useRef(null);
 

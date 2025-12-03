@@ -3,7 +3,7 @@ import axios from "axios";
 import useWebSocket from "../../hooks/useWebSocket";
 
 // API Configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || "http://127.0.0.1:3000";
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://127.0.0.1:5001";
 
 const GateMonitor = () => {
   const [gateData, setGateData] = useState(null);
