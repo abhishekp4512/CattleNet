@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import GateMonitor from './components/dashboard/GateMonitor';
 import EnvironmentalMonitor from './EnvironmentalMonitor';
 import FeedMonitorComponent from './components/dashboard/FeedMonitor';
@@ -143,19 +143,7 @@ function App() {
     };
   }, []);
 
-  const prepareRadarData = () => {
-    if (!latestData) return [];
-    const scaleAccelerometer = (val) => Math.min(10, Math.abs(val) / 40);
-    const scaleGyroscope = (val) => Math.min(10, Math.abs(val));
-    return [
-      { subject: 'Acc X', value: scaleAccelerometer(latestData.acc_x), fullMark: 10 },
-      { subject: 'Acc Y', value: scaleAccelerometer(latestData.acc_y), fullMark: 10 },
-      { subject: 'Acc Z', value: scaleAccelerometer(latestData.acc_z), fullMark: 10 },
-      { subject: 'Gyro X', value: scaleGyroscope(latestData.gyro_x), fullMark: 10 },
-      { subject: 'Gyro Y', value: scaleGyroscope(latestData.gyro_y), fullMark: 10 },
-      { subject: 'Gyro Z', value: scaleGyroscope(latestData.gyro_z), fullMark: 10 },
-    ];
-  };
+
 
   const formatTimestamp = (timestamp) => {
     return new Date(timestamp).toLocaleTimeString();
