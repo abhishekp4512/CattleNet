@@ -19,9 +19,5 @@ COPY backend/cattle_health_model.joblib ./backend/
 # Set working directory to backend
 WORKDIR /app/backend
 
-# Expose port (Railway will set PORT env var)
-ENV PORT=5001
-EXPOSE ${PORT}
-
 # Start the application
 CMD ["python", "app.py"]
