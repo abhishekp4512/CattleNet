@@ -73,7 +73,7 @@ function App() {
           setHealthStats(statsResponse.data.health_stats);
         }
       } catch (err) {
-        setError("Error connecting to the server. Is the backend running?");
+        setError(`Error connecting to ${API_BASE_URL}. Is the backend running?`);
         console.error(err);
       } finally {
         setLoading(false);
