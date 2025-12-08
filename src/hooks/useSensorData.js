@@ -11,14 +11,16 @@ export const useSensorData = () => {
       setIsLoading(true);
 
       // Fetch latest sensor reading
-      const latestResponse = await fetch('http://localhost:5001/api/latest');
+      const isProduction = process.env.NODE_ENV === 'production';
+      const API_BASE_URL = isProduction ? '' : (process.env.REACT_APP_API_URL || 'http://localhost:5001');
+      const latestResponse = await fetch(`${API_BASE_URL}/api/latest`);
       if (latestResponse.ok) {
         const latestData = await latestResponse.json();
         setLatestReading(latestData);
       }
 
       // Fetch all sensor data
-      const dataResponse = await fetch('http://localhost:5001/api/data');
+      const dataResponse = await fetch(`${API_BASE_URL}/api/data`);
       if (dataResponse.ok) {
         const allData = await dataResponse.json();
         if (allData.status === 'success' && allData.data) {

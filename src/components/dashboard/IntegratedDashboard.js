@@ -9,7 +9,9 @@ const IntegratedDashboard = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await fetch('http://localhost:5001/api/integrated-data');
+        const isProduction = process.env.NODE_ENV === 'production';
+        const API_BASE_URL = isProduction ? '' : (process.env.REACT_APP_API_URL || 'http://localhost:5001');
+        const response = await fetch(`${API_BASE_URL}/api/integrated-data`);
         if (response.ok) {
           const result = await response.json();
           if (result.status === 'success') {
@@ -57,8 +59,8 @@ const IntegratedDashboard = () => {
             </div>
             {data.health_prediction && (
               <span className={`px-3 py-1 rounded-full text-xs font-bold ${data.health_prediction.prediction === 'Normal'
-                  ? 'bg-green-100 text-green-800'
-                  : 'bg-red-100 text-red-800'
+                ? 'bg-green-100 text-green-800'
+                : 'bg-red-100 text-red-800'
                 }`}>
                 {data.health_prediction.prediction}
               </span>
@@ -95,8 +97,8 @@ const IntegratedDashboard = () => {
               </p>
             </div>
             <span className={`px-3 py-1 rounded-full text-xs font-bold ${data.environment?.cattle_presence
-                ? 'bg-green-100 text-green-800'
-                : 'bg-gray-100 text-gray-600'
+              ? 'bg-green-100 text-green-800'
+              : 'bg-gray-100 text-gray-600'
               }`}>
               {data.environment?.cattle_presence ? 'Cattle Present' : 'No Presence'}
             </span>

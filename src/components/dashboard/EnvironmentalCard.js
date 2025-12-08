@@ -8,7 +8,9 @@ const EnvironmentalCard = () => {
 
   const fetchEnvironmentalData = async () => {
     try {
-      const response = await fetch('http://localhost:5001/api/environment');
+      const isProduction = process.env.NODE_ENV === 'production';
+      const API_BASE_URL = isProduction ? '' : (process.env.REACT_APP_API_URL || 'http://localhost:5001');
+      const response = await fetch(`${API_BASE_URL}/api/environment`);
       if (response.ok) {
         const data = await response.json();
         setEnvironmentalData(data);
