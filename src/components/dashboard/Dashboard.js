@@ -25,14 +25,14 @@ const Dashboard = () => {
   useEffect(() => {
     if (sensorData && sensorData.length > 0) {
       const total = sensorData.length;
-      const healthy = sensorData.filter(cattle => 
+      const healthy = sensorData.filter(cattle =>
         cattle.temperature >= 38.0 && cattle.temperature <= 39.5 &&
         cattle.activity_level > 0.3
       ).length;
-      const monitoring = sensorData.filter(cattle => 
+      const monitoring = sensorData.filter(cattle =>
         cattle.temperature > 39.5 && cattle.temperature < 40.5
       ).length;
-      const alerts = sensorData.filter(cattle => 
+      const alerts = sensorData.filter(cattle =>
         cattle.temperature >= 40.5 || cattle.temperature < 37.0
       ).length;
 

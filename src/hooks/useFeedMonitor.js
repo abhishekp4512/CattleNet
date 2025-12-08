@@ -11,11 +11,14 @@ const useFeedMonitor = () => {
 
   const { lastMessage } = useWebSocket();
 
+  // API Configuration - use environment variable
+  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:5001';
+
   // Fetch from API as fallback/initial load
   useEffect(() => {
     const fetchFeedData = async () => {
       try {
-        const response = await fetch('http://localhost:5001/api/feed-monitor');
+        const response = await fetch(`${API_BASE_URL}/api/feed-monitor`);
         if (response.ok) {
           const data = await response.json();
           if (data.status === 'success') {
@@ -38,7 +41,7 @@ const useFeedMonitor = () => {
     fetchFeedData(); // Initial fetch
 
     return () => clearInterval(interval);
-  }, []);
+  }, [API_BASE_URL]);
 
   // Handle real-time WebSocket updates
   useEffect(() => {
@@ -105,4 +108,3 @@ const useFeedMonitor = () => {
 };
 
 export default useFeedMonitor;
-

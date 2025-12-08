@@ -75,6 +75,7 @@ feed_monitor_buffer = deque(maxlen=100)  # Store last 100 feed monitor readings
 latest_data = {}
 latest_environmental_data = {}
 latest_gate_data = {}
+latest_feed_data = {}  # Latest feed monitor data
 cattle_registry = {}  # Maps RFID tags to cattle information
 
 # Track unique RFID tags for IN (5 AM - 4 PM) and OUT (4 PM - 5 AM) periods
@@ -406,14 +407,41 @@ def process_feed_monitor_data(data, topic):
     global latest_feed_data, processed_messages
     
     try:
+        # DEBUG: Log the raw incoming data
+        print(f"\n{'='*60}")
+        print(f"🔍 RAW FEED DATA RECEIVED on topic '{topic}':")
+        print(f"   Data: {json.dumps(data, indent=2)}")
+        print(f"{'='*60}")
+        
+        # FILTER: Skip "no cattle detected" status messages
+        if data.get('status') == 'no_cattle_detected':
+            print(f"⏭️  FILTERED: No cattle detected message")
+            return
+        
         # Extract cattle ID and timestamp for deduplication
-        cattle_id = data.get('cattleID', data.get('cattle_id', 'unknown'))
+        cattle_id = data.get('cattleID', data.get('cattle_id', data.get('cattleName', 'unknown')))
         timestamp = data.get('timestamp', datetime.now().isoformat())
         
-        # SKIP if no cattle detected (empty/idle message)
-        if not cattle_id or cattle_id.lower() in ['unknown', 'no cattle', 'none', '', 'no_cattle_detected']:
-            print(f"Skipping feed data: Invalid cattle_id '{cattle_id}'")
+        # Get feed consumption to validate if this is real data
+        feed_consumed = float(data.get('feedConsumed', data.get('feed_consumed', 0)))
+        
+        print(f"📋 Extracted Values:")
+        print(f"   - cattle_id: '{cattle_id}'")
+        print(f"   - feed_consumed: {feed_consumed}kg")
+        print(f"   - timestamp: {timestamp}")
+        
+        # SKIP if no cattle detected AND no feed consumption (empty/idle message)
+        # BUT allow "UNKNOWN" if there's actual feed consumption
+        is_invalid_id = not cattle_id or cattle_id.lower() in ['no cattle', 'none', '']
+        is_unknown_without_feed = cattle_id.lower() in ['unknown', 'no_cattle_detected'] and feed_consumed <= 0
+        
+        if is_invalid_id or is_unknown_without_feed:
+            print(f"⏭️  FILTERED: Invalid cattle_id '{cattle_id}' with {feed_consumed}kg feed")
+            print(f"   - is_invalid_id: {is_invalid_id}")
+            print(f"   - is_unknown_without_feed: {is_unknown_without_feed}")
             return
+        
+        print(f"✅ PASSED initial filtering - proceeding to process...")
         
         # DEDUPLICATION: Check if we've already processed this exact message
         message_key = (topic, timestamp, cattle_id)
@@ -434,14 +462,9 @@ def process_feed_monitor_data(data, topic):
         
         # Handle different MQTT payload formats
         # Format 1: Single cattle entry with cattleID and feedConsumed
-        if 'cattleID' in data or 'cattle_id' in data:
-            feed_consumed = float(data.get('feedConsumed', data.get('feed_consumed', 0)))
+        if 'cattleID' in data or 'cattle_id' in data or 'cattleName' in data:
+            # feed_consumed already extracted above
             water_status = data.get('waterStatus', data.get('water_present', False))
-            
-            # SKIP if no actual feed consumption (idle/no-cattle message)
-            if feed_consumed <= 0:
-                print(f"Skipping feed data: Zero or negative feed consumption ({feed_consumed}) for {cattle_id}")
-                return
             
             # Create activity entry with cattle identification
             activity = {
@@ -882,15 +905,77 @@ def get_health_stats():
                 }
             })
         
+        # Aggregate data from buffer
         data_list = list(cattle_data_buffer)
+        
+        # 1. Total Cattle Count (Unique IDs)
+        unique_cattle = set(d.get('cattle_id') for d in data_list if d.get('cattle_id'))
+        total_cattle = len(unique_cattle)
+        
+        # 2. Anomaly Detection & Healthy Percentage
+        # We need to run anomaly detection on recent data for each cattle
+        cattle_status = {}
+        for d in data_list:
+            cid = d.get('cattle_id')
+            if not cid or cid in cattle_status:
+                continue
+                
+            # Run detection on this reading
+            features = [
+                d.get('acc_x', 0), d.get('acc_y', 0), d.get('acc_z', 0),
+                d.get('gyro_x', 0), d.get('gyro_y', 0), d.get('gyro_z', 0)
+            ]
+            result = detect_anomaly(features)
+            cattle_status[cid] = result['prediction'] # "Normal" or "Anomaly"
+
+        healthy_count = sum(1 for status in cattle_status.values() if status == 'Normal')
+        anomaly_count = total_cattle - healthy_count
+        healthy_percentage = round((healthy_count / total_cattle * 100), 1) if total_cattle > 0 else 0
+        
+        # 3. Average Temperature
+        temps = [d.get('temperature') for d in data_list if d.get('temperature')]
+        avg_temp = round(sum(temps) / len(temps), 1) if temps else 0
+        
+        # 4. Activity Score (Simple average of activity levels)
+        # We'll re-calculate activity level for the sample
+        activity_scores = []
+        for d in data_list:
+             features = [
+                d.get('acc_x', 0), d.get('acc_y', 0), d.get('acc_z', 0),
+                d.get('gyro_x', 0), d.get('gyro_y', 0), d.get('gyro_z', 0)
+            ]
+             # Re-use the logic from detect_anomaly but just get the score
+             # Or just use a simplified magnitude check
+             score = (abs(features[0]) + abs(features[1]) + abs(features[2])) * 10 # Rough scale
+             activity_scores.append(score)
+             
+        avg_activity_score = int(sum(activity_scores) / len(activity_scores)) if activity_scores else 0
+        
+        # 5. Cattle Distribution for Pie Chart
+        cattle_distribution = [
+            {'name': 'Healthy', 'value': healthy_count, 'color': '#10B981'},
+            {'name': 'Anomaly', 'value': anomaly_count, 'color': '#EF4444'}
+        ]
+        
+        # 6. Activity Levels (Mocking time periods from recent buffer)
+        # Since buffer is short, we'll just distribute current data into "Recent" buckets
+        # In a real app, this would query historical DB
+        activity_levels = [
+            {'period': 'Recent', 'normal': healthy_count, 'anomaly': anomaly_count}
+        ]
+
         return jsonify({
             'status': 'success',
             'health_stats': {
                 'total_samples': len(data_list),
-                'normal_count': len(data_list),
-                'anomaly_count': 0,
-                'anomaly_percentage': 0,
-                'activity_levels': {'average': 50, 'maximum': 100, 'minimum': 0}
+                'health_metrics': {
+                    'total_cattle': total_cattle,
+                    'healthy_percentage': healthy_percentage,
+                    'average_temp': avg_temp,
+                    'activity_score': min(100, avg_activity_score) # Cap at 100
+                },
+                'cattle_distribution': cattle_distribution,
+                'activity_levels': activity_levels
             }
         })
     except Exception as e:
@@ -1234,11 +1319,30 @@ def get_feed_monitor_data():
             # Fallback to in-memory buffer
             data_list = list(feed_monitor_buffer)[-20:]
         
-        # Get latest data (still from memory for real-time status if needed, or just empty)
-        latest = latest_feed_data if latest_feed_data else {}
-        
-        # Inject the historical/db data as recent_activity for the frontend
-        latest['recent_activity'] = data_list
+        # Build response from buffer data
+        latest = {}
+        if data_list:
+            # Calculate aggregates from recent data
+            # Calculate aggregates from recent data
+            total_feed = sum((d.get('feed_consumed') or 0) for d in data_list)
+            total_water = sum((d.get('water_consumed') or 0) for d in data_list)
+            count = len(data_list)
+            
+            latest = {
+                'total_feed': round(total_feed, 2),
+                'total_water': round(total_water, 2),
+                'avg_feed_per_cattle': round(total_feed / count, 2) if count > 0 else 0,
+                'avg_water_per_cattle': round(total_water / count, 2) if count > 0 else 0,
+                'recent_activity': data_list
+            }
+        else:
+            latest = {
+                'total_feed': 0,
+                'total_water': 0,
+                'avg_feed_per_cattle': 0,
+                'avg_water_per_cattle': 0,
+                'recent_activity': []
+            }
         
         return jsonify({
             'status': 'success',

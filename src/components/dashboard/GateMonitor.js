@@ -25,12 +25,22 @@ const GateMonitor = () => {
         setCattleRegistry(response.data.cattle_registry);
         setRecentActivity(response.data.recent_activity);
         setStatistics(response.data.statistics);
+        setError(null); // Clear any previous errors
       } else {
-        setError("Failed to fetch gate data");
+        setError(null); // Don't treat "no data" as error
       }
     } catch (err) {
-      setError("Error connecting to the server. Is the backend running?");
-      console.error(err);
+      // Check if it's a 404 (no data available yet)
+      if (err.response && err.response.status === 404) {
+        setError(null); // Not a real error, just no data yet
+        setGateData(null);
+        setCattleRegistry({});
+        setRecentActivity([]);
+        setStatistics({});
+      } else {
+        setError("Error connecting to the server. Is the backend running?");
+        console.error(err);
+      }
     } finally {
       setLoading(false);
     }
