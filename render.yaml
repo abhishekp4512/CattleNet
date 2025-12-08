@@ -2,8 +2,9 @@ services:
   - type: web
     name: cattlenet-backend
     env: python
-    buildCommand: chmod +x start.sh && pip install -r backend/requirements.txt
-    startCommand: ./start.sh
+    runtime: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && gunicorn --threads 100 --bind 0.0.0.0:$PORT app:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.0
