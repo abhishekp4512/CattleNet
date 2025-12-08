@@ -1676,19 +1676,26 @@ def handle_disconnect():
     """Handle client disconnection from WebSocket"""
     print('Client disconnected')
 
+# Initialize services immediately when app is imported (required for Gunicorn/Vercel)
+print("Initializing services...")
+try:
+    if mongodb.connect():
+        print("[OK] MongoDB database initialized")
+    else:
+        print("[WARN] MongoDB not available - running in memory-only mode")
+except Exception as e:
+    print(f"[ERROR] Failed to connect to MongoDB: {e}")
+
+# Start the MQTT client in a separate thread
+# Note: On Vercel, this background thread may be frozen between requests
+try:
+    mqtt_thread = threading.Thread(target=start_mqtt_client, daemon=True)
+    mqtt_thread.start()
+except Exception as e:
+    print(f"[ERROR] Failed to start MQTT thread: {e}")
+
 if __name__ == '__main__':
     try:
-        # Initialize MongoDB connection
-        print("Initializing MongoDB connection...")
-        if mongodb.connect():
-            print("[OK] MongoDB database initialized")
-        else:
-            print("[WARN] MongoDB not available - running in memory-only mode")
-        
-        # Start the MQTT client in a separate thread
-        mqtt_thread = threading.Thread(target=start_mqtt_client, daemon=True)
-        mqtt_thread.start()
-        
         # Get configuration from environment
         host = os.getenv('HOST', '127.0.0.1')
         port = int(os.getenv('PORT', 5001))
