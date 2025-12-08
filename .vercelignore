@@ -1,0 +1,13 @@
+# Ignore backend files to prevent Vercel from trying to build Python
+backend/
+requirements.txt
+runtime.txt
+render.yaml
+*.py
+start.sh
+.venv/
+.env
+
+# Ignore unnecessary build artifacts
+build/
+node_modules/
