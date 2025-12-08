@@ -29,11 +29,12 @@ function App() {
     gyro_x: 1.5, gyro_y: 1.2, gyro_z: 0.8
   });
 
-  // Use Empty string for production (Vercel) to use relative paths which are handled by vercel.json rewrites
-  // Use REACT_APP_API_URL if defined, otherwise default to localhost for local dev
+  // Use environment variable for backend API URL
+  // In production on Vercel, point to Render backend
+  // In development, use localhost
   const isProduction = process.env.NODE_ENV === 'production';
-  const API_BASE_URL = isProduction ? '' : (process.env.REACT_APP_API_URL || 'http://localhost:5001');
-  const WEBSOCKET_URL = isProduction ? window.location.origin : (process.env.REACT_APP_API_URL || 'http://localhost:5001');
+  const API_BASE_URL = process.env.REACT_APP_API_URL || (isProduction ? 'https://cattlenet-backend.onrender.com' : 'http://localhost:5001');
+  const WEBSOCKET_URL = process.env.REACT_APP_WEBSOCKET_URL || API_BASE_URL;
   const maxDataPoints = 20;
   const socketRef = useRef(null);
 
