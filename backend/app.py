@@ -35,15 +35,20 @@ if cors_origins == '*':
 else:
     CORS(app, origins=cors_origins.split(','))
 
-# Configure SocketIO for production
-# Use 'threading' async mode to avoid importing eventlet's green SSL wrapper which can
-# raise an AttributeError on newer Python versions where ssl.wrap_socket is removed.
-# For production you can switch back to 'eventlet' or 'gevent' after ensuring compatibility.
-socketio = SocketIO(app,
-                   cors_allowed_origins=cors_origins,
-                   async_mode='threading',
-                   logger=False,
-                   engineio_logger=False)
+# Determine the best async_mode based on installed packages and environment
+async_mode = 'threading'  # Default fallback
+try:
+    import eventlet
+    async_mode = 'eventlet'
+    print("Using Eventlet async mode")
+except ImportError:
+    pass
+
+socketio = SocketIO(app, 
+                   cors_allowed_origins=cors_origins, 
+                   async_mode=async_mode,
+                   ping_timeout=60, 
+                   ping_interval=25)
 
 # MQTT Configuration
 MQTT_BROKER = os.getenv('MQTT_BROKER', "broker.emqx.io")
