@@ -1,3 +1,3 @@
 #!/bin/bash
 cd backend
-exec gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:$PORT app:app
+exec gunicorn --threads 100 --bind 0.0.0.0:$PORT app:app
