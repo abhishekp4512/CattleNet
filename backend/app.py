@@ -1713,7 +1713,3 @@ if __name__ == '__main__':
         # Cleanup on shutdown
         if mongodb.connected:
             mongodb.disconnect()
-# Simple health stats endpoint
-@app.route('/api/health-stats', methods=['GET'])
-def get_health_stats():
-    return jsonify({'status': 'success', 'health_stats': {'total_samples': len(cattle_data_buffer), 'normal_count': 0, 'anomaly_count': 0, 'anomaly_percentage': 0, 'activity_levels': {'average': 0, 'maximum': 0, 'minimum': 0}}})
