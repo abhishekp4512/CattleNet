@@ -24,12 +24,12 @@ class MongoDBClient:
         self.connected = False
         
     def connect(self):
-        """Establish connection to MongoDB"""
+        """Establish connection to MongoDB (optional - silently fails if unavailable)"""
         try:
             self.client = MongoClient(
                 self.mongo_uri,
-                serverSelectionTimeoutMS=5000,
-                connectTimeoutMS=10000
+                serverSelectionTimeoutMS=2000,
+                connectTimeoutMS=3000
             )
             # Verify connection
             self.client.admin.command('ping')
@@ -39,8 +39,8 @@ class MongoDBClient:
             print(f"[OK] Using database: {self.db_name}")
             self._ensure_indexes()
             return True
-        except (ServerSelectionTimeoutError, ConnectionFailure) as e:
-            print(f"[ERROR] Failed to connect to MongoDB: {e}")
+        except Exception:
+            # Silently fail - database is optional
             self.connected = False
             return False
     
@@ -85,47 +85,52 @@ class MongoDBClient:
     
     def insert_sensor_data(self, data: Dict[str, Any]) -> Optional[str]:
         """Insert sensor data document"""
+        if not self.connected:
+            return None
         try:
             result = self.db.sensor_data.insert_one(data)
             return str(result.inserted_id)
-        except Exception as e:
-            print(f"Error inserting sensor data: {e}")
+        except Exception:
             return None
     
     def insert_environmental_data(self, data: Dict[str, Any]) -> Optional[str]:
         """Insert environmental data document"""
+        if not self.connected:
+            return None
         try:
             result = self.db.environmental_data.insert_one(data)
             return str(result.inserted_id)
-        except Exception as e:
-            print(f"Error inserting environmental data: {e}")
+        except Exception:
             return None
     
     def insert_gate_data(self, data: Dict[str, Any]) -> Optional[str]:
         """Insert gate data document"""
+        if not self.connected:
+            return None
         try:
             result = self.db.gate_data.insert_one(data)
             return str(result.inserted_id)
-        except Exception as e:
-            print(f"Error inserting gate data: {e}")
+        except Exception:
             return None
     
     def insert_feed_monitor_data(self, data: Dict[str, Any]) -> Optional[str]:
         """Insert feed monitor data document"""
+        if not self.connected:
+            return None
         try:
             result = self.db.feed_monitor_data.insert_one(data)
             return str(result.inserted_id)
-        except Exception as e:
-            print(f"Error inserting feed monitor data: {e}")
+        except Exception:
             return None
     
     def insert_health_data(self, data: Dict[str, Any]) -> Optional[str]:
         """Insert health prediction data document"""
+        if not self.connected:
+            return None
         try:
             result = self.db.health_data.insert_one(data)
             return str(result.inserted_id)
-        except Exception as e:
-            print(f"Error inserting health data: {e}")
+        except Exception:
             return None
     
     def get_sensor_data(self, cattle_id: str, hours: int = 24, limit: int = 100) -> List[Dict]:
