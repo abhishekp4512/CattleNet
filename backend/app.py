@@ -41,7 +41,9 @@ try:
     import eventlet
     async_mode = 'eventlet'
     print("Using Eventlet async mode")
-except ImportError:
+except (ImportError, AttributeError):
+    # AttributeError can happen on Python 3.12+ because eventlet uses removed ssl.wrap_socket
+    print("Eventlet not compatible or not installed, falling back to threading")
     pass
 
 socketio = SocketIO(app, 

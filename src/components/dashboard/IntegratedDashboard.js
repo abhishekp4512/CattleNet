@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Activity, Thermometer, Droplets, Sun, Moon } from 'lucide-react';
 import Card from '../ui/card';
+import { API_BASE_URL } from '../../config';
 
 const IntegratedDashboard = () => {
   const [data, setData] = useState(null);
@@ -9,8 +10,6 @@ const IntegratedDashboard = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const isProduction = process.env.NODE_ENV === 'production';
-        const API_BASE_URL = isProduction ? '' : (process.env.REACT_APP_API_URL || 'http://localhost:5001');
         const response = await fetch(`${API_BASE_URL}/api/integrated-data`);
         if (response.ok) {
           const result = await response.json();

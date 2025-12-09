@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import EnvironmentalCard from './components/dashboard/EnvironmentalCard';
 import EnvironmentalDataTable from './components/dashboard/EnvironmentalDataTable';
 import IntegratedDashboard from './components/dashboard/IntegratedDashboard';
+import { API_BASE_URL } from './config';
 
 const EnvironmentalMonitor = () => {
   const [environmentalData, setEnvironmentalData] = useState(null);
@@ -9,8 +10,6 @@ const EnvironmentalMonitor = () => {
 
   const fetchData = async () => {
     try {
-      const isProduction = process.env.NODE_ENV === 'production';
-      const API_BASE_URL = isProduction ? '' : (process.env.REACT_APP_API_URL || 'http://localhost:5001');
       const response = await fetch(`${API_BASE_URL}/api/environment`);
       const data = await response.json();
       setEnvironmentalData(data);

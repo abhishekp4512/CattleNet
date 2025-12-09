@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
+import { API_BASE_URL, WEBSOCKET_URL } from '../config';
 
 const useWebSocket = () => {
   const [isConnected, setIsConnected] = useState(false);
@@ -9,8 +10,6 @@ const useWebSocket = () => {
 
   const checkConnection = async () => {
     try {
-      const isProduction = process.env.NODE_ENV === 'production';
-      const API_BASE_URL = isProduction ? '' : (process.env.REACT_APP_API_URL || 'http://localhost:5001');
       const response = await fetch(`${API_BASE_URL}/api/mqtt-status`);
       if (response.ok) {
         const data = await response.json();
@@ -30,8 +29,6 @@ const useWebSocket = () => {
   useEffect(() => {
     // Only create socket once
     if (!socketRef.current) {
-      const isProduction = process.env.NODE_ENV === 'production';
-      const WEBSOCKET_URL = isProduction ? window.location.origin : (process.env.REACT_APP_API_URL || 'http://localhost:5001');
       socketRef.current = io(WEBSOCKET_URL, {
         transports: ['websocket'],
         reconnection: true,

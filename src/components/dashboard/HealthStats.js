@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { TrendingUp, Heart, AlertTriangle, Activity } from 'lucide-react';
+import { API_BASE_URL } from '../../config';
 
 const HealthStats = () => {
   const [healthData, setHealthData] = useState(null);
@@ -8,8 +9,6 @@ const HealthStats = () => {
 
   const fetchHealthStats = async () => {
     try {
-      const isProduction = process.env.NODE_ENV === 'production';
-      const API_BASE_URL = isProduction ? '' : (process.env.REACT_APP_API_URL || 'http://localhost:5001');
       const response = await fetch(`${API_BASE_URL}/api/health-stats`);
       if (response.ok) {
         const data = await response.json();

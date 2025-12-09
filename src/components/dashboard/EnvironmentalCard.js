@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Cloud, Sun, Moon, Eye, EyeOff, Thermometer, Droplets } from 'lucide-react';
+import { API_BASE_URL } from '../../config';
 
 const EnvironmentalCard = () => {
   const [environmentalData, setEnvironmentalData] = useState(null);
@@ -8,8 +9,6 @@ const EnvironmentalCard = () => {
 
   const fetchEnvironmentalData = async () => {
     try {
-      const isProduction = process.env.NODE_ENV === 'production';
-      const API_BASE_URL = isProduction ? '' : (process.env.REACT_APP_API_URL || 'http://localhost:5001');
       const response = await fetch(`${API_BASE_URL}/api/environment`);
       if (response.ok) {
         const data = await response.json();

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../config';
 
 export const useSensorData = () => {
   const [sensorData, setSensorData] = useState([]);
@@ -11,8 +12,6 @@ export const useSensorData = () => {
       setIsLoading(true);
 
       // Fetch latest sensor reading
-      const isProduction = process.env.NODE_ENV === 'production';
-      const API_BASE_URL = isProduction ? '' : (process.env.REACT_APP_API_URL || 'http://localhost:5001');
       const latestResponse = await fetch(`${API_BASE_URL}/api/latest`);
       if (latestResponse.ok) {
         const latestData = await latestResponse.json();
