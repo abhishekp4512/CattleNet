@@ -57,8 +57,12 @@ const HealthStats = () => {
     }
   };
 
-  const data = (healthData?.status === 'success' && healthData?.cattle_distribution) ? healthData : mockData;
+  const data = (healthData?.status === 'success' && healthData?.health_stats) ? healthData.health_stats : mockData;
   const COLORS = ['#10B981', '#F59E0B', '#EF4444'];
+
+  // Ensure arrays exist and are actually arrays to prevent Recharts crashes
+  const cattleDistribution = Array.isArray(data?.cattle_distribution) ? data.cattle_distribution : [];
+  const activityLevels = Array.isArray(data?.activity_levels) ? data.activity_levels : [];
 
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
@@ -71,25 +75,25 @@ const HealthStats = () => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <div className="text-center p-3 bg-green-50 rounded-lg">
           <Activity className="mx-auto h-6 w-6 text-green-600 mb-2" />
-          <p className="text-2xl font-bold text-green-800">{data.health_metrics?.total_cattle || 16}</p>
+          <p className="text-2xl font-bold text-green-800">{data?.health_metrics?.total_cattle ?? 16}</p>
           <p className="text-xs text-green-600">Total Cattle</p>
         </div>
 
         <div className="text-center p-3 bg-blue-50 rounded-lg">
           <TrendingUp className="mx-auto h-6 w-6 text-blue-600 mb-2" />
-          <p className="text-2xl font-bold text-blue-800">{data.health_metrics?.healthy_percentage || 75}%</p>
+          <p className="text-2xl font-bold text-blue-800">{data?.health_metrics?.healthy_percentage ?? 75}%</p>
           <p className="text-xs text-blue-600">Healthy</p>
         </div>
 
         <div className="text-center p-3 bg-orange-50 rounded-lg">
           <span className="text-2xl">🌡️</span>
-          <p className="text-2xl font-bold text-orange-800">{data.health_metrics?.average_temp || 28.5}°C</p>
+          <p className="text-2xl font-bold text-orange-800">{data?.health_metrics?.average_temp ?? 28.5}°C</p>
           <p className="text-xs text-orange-600">Avg Temp</p>
         </div>
 
         <div className="text-center p-3 bg-purple-50 rounded-lg">
           <AlertTriangle className="mx-auto h-6 w-6 text-purple-600 mb-2" />
-          <p className="text-2xl font-bold text-purple-800">{data.health_metrics?.activity_score || 85}</p>
+          <p className="text-2xl font-bold text-purple-800">{data?.health_metrics?.activity_score ?? 85}</p>
           <p className="text-xs text-purple-600">Activity Score</p>
         </div>
       </div>
@@ -101,7 +105,7 @@ const HealthStats = () => {
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
-                data={data.cattle_distribution}
+                data={cattleDistribution}
                 cx="50%"
                 cy="50%"
                 innerRadius={40}
@@ -110,7 +114,7 @@ const HealthStats = () => {
                 dataKey="value"
                 label={({ name, value }) => `${name}: ${value}`}
               >
-                {data.cattle_distribution.map((entry, index) => (
+                {cattleDistribution.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
@@ -125,7 +129,7 @@ const HealthStats = () => {
         <h4 className="text-md font-medium text-gray-700 mb-3">Daily Activity Patterns</h4>
         <div className="h-48">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data.activity_levels}>
+            <BarChart data={activityLevels}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="period" />
               <YAxis />

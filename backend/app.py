@@ -91,6 +91,13 @@ unique_rfid_out = set()  # Unique RFIDs for exits (evening: 4 PM - 5 AM)
 last_date_in = None  # Track date for IN period
 last_date_out = None  # Track date for OUT period
 
+# Map sensor IDs to RFID tags (so sensor1 and E3882528 are recognized as same cattle)
+SENSOR_TO_RFID = {
+    'sensor1': 'E3882528',  # Sensor 1 is attached to cattle with RFID E3882528
+    # Add more mappings here as needed:
+    # 'sensor2': 'RFID_TAG_2',
+}
+
 # Deduplication: Track recently processed MQTT messages to prevent duplicates
 processed_messages = set()  # Store (topic, timestamp, cattle_id) tuples to detect duplicates
 MAX_MESSAGE_HISTORY = 500  # Keep track of last N messages
@@ -250,6 +257,10 @@ def process_sensor_data(data, topic):
             cattle_id = topic_parts[2] if len(topic_parts) > 2 else "unknown"
         else:
             cattle_id = "unknown"
+        
+        # If this sensor is mapped to an RFID tag, use the RFID instead
+        if cattle_id in SENSOR_TO_RFID:
+            cattle_id = SENSOR_TO_RFID[cattle_id]
         
         # Create standardized data structure
         timestamp = data.get('timestamp', datetime.now().isoformat())
@@ -915,8 +926,23 @@ def get_health_stats():
         # Aggregate data from buffer
         data_list = list(cattle_data_buffer)
         
-        # 1. Total Cattle Count (Unique IDs)
+        # 1. Total Cattle Count (Unique IDs from all sources: sensor, gate, feed)
         unique_cattle = set(d.get('cattle_id') for d in data_list if d.get('cattle_id'))
+        
+        # Also count unique RFID tags from gate data
+        gate_list = list(gate_data_buffer)
+        for d in gate_list:
+            rfid = d.get('rfid_tag') or d.get('cattle_id')
+            if rfid and rfid != 'unknown':
+                unique_cattle.add(rfid)
+        
+        # Also count unique cattle from feed monitor data
+        feed_list = list(feed_monitor_buffer)
+        for d in feed_list:
+            cattle_id = d.get('cattle_id') or d.get('rfid_tag')
+            if cattle_id and cattle_id != 'unknown':
+                unique_cattle.add(cattle_id)
+        
         total_cattle = len(unique_cattle)
         
         # 2. Anomaly Detection & Healthy Percentage
@@ -987,6 +1013,49 @@ def get_health_stats():
         })
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+ 
+@app.route('/api/test-data', methods=['POST'])
+def test_data():
+    """Analyze cattle data provided by user"""
+    try:
+        # Get the test data from request
+        test_data_input = request.get_json()
+        
+        if not test_data_input:
+            return jsonify({
+                'status': 'error',
+                'message': 'No test data provided'
+            }), 400
+            
+        # Extract the features
+        acc_x = float(test_data_input.get('acc_x', 0))
+        acc_y = float(test_data_input.get('acc_y', 0))
+        acc_z = float(test_data_input.get('acc_z', 0))
+        gyro_x = float(test_data_input.get('gyro_x', 0))
+        gyro_y = float(test_data_input.get('gyro_y', 0))
+        gyro_z = float(test_data_input.get('gyro_z', 0))
+        
+        # Create features array
+        features = [acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z]
+        
+        # Use our detection function to analyze the data
+        result = detect_anomaly(features)
+        
+        # Return the analysis results
+        return jsonify({
+            'status': 'success',
+            'prediction': result['prediction'],
+            'confidence': result['confidence'],
+            'important_features': result['important_features'],
+            'activity_level': result['activity_level'],
+            'explanation': f"The model is {result['confidence']}% confident in its prediction. The most important factors were {', '.join(result['important_features'])}."
+        })
+    
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
  
 @app.route('/api/mqtt-status', methods=['GET'])
 def get_mqtt_status():
